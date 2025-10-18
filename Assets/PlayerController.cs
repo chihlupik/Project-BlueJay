@@ -540,30 +540,37 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    void UpdateCameraHeight()
+void UpdateCameraHeight()
+{
+    if (cameraTransform != null)
     {
-        if (cameraTransform != null)
+        float targetCameraHeight;
+        
+        if (isSliding)
         {
-            float targetCameraHeight;
-            
-            if (isSliding)
-            {
-                targetCameraHeight = slidingCameraHeight;
-            }
-            else if (isCrouching)
-            {
-                targetCameraHeight = crouchingCameraHeight;
-            }
-            else
-            {
-                targetCameraHeight = standingCameraHeight;
-            }
-            
-            Vector3 currentCameraPos = cameraTransform.localPosition;
-            Vector3 targetCameraPos = new Vector3(0, targetCameraHeight, 0);
-            cameraTransform.localPosition = Vector3.Lerp(currentCameraPos, targetCameraPos, crouchTransitionSpeed * Time.deltaTime);
+            targetCameraHeight = slidingCameraHeight;
+        }
+        else if (isCrouching)
+        {
+            targetCameraHeight = crouchingCameraHeight;
+        }
+        else
+        {
+            targetCameraHeight = standingCameraHeight;
+        }
+        
+        Vector3 currentCameraPos = cameraTransform.localPosition;
+        Vector3 targetCameraPos = new Vector3(0, targetCameraHeight, 0);
+        cameraTransform.localPosition = Vector3.Lerp(currentCameraPos, targetCameraPos, crouchTransitionSpeed * Time.deltaTime);
+
+        // Update CameraController's original position for bobbing
+        CameraController cameraController = cameraTransform.GetComponent<CameraController>();
+        if (cameraController != null)
+        {
+            cameraController.UpdateOriginalPosition();
         }
     }
+}
 
     bool CanStandUp()
     {

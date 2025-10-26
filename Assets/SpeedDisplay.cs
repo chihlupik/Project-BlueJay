@@ -17,13 +17,10 @@ public class SpeedDisplay : MonoBehaviour
     {
         if (playerController == null || speedText == null) return;
         
-        // Get speed from player controller
         float speed = playerController.GetVelocity().magnitude;
         
-        // Create display text
         string displayText = $"Speed: {speed.ToString("F1")} {unit}";
         
-        // Add coordinates if enabled
         if (showCoordinates)
         {
             Vector3 position = playerController.transform.position;
@@ -37,7 +34,6 @@ public class SpeedDisplay : MonoBehaviour
             }
         }
         
-        // Update text
         speedText.text = displayText;
     }
 }

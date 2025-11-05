@@ -17,6 +17,8 @@ public class DetectorDisplay : MonoBehaviour
     
     [Header("List UI References")]
     [SerializeField] private TextMeshProUGUI[] listSlots = new TextMeshProUGUI[10]; // A1 to A10
+    [SerializeField] private TextMeshProUGUI[] listLevelSlots = new TextMeshProUGUI[10]; // For threat levels
+    [SerializeField] private TextMeshProUGUI[] listDistanceSlots = new TextMeshProUGUI[10]; // For distances
     [SerializeField] private TextMeshProUGUI counterText;
     
     [Header("Detection Settings")]
@@ -178,17 +180,30 @@ public class DetectorDisplay : MonoBehaviour
         closestAnomaly = nearbyAnomalies.Count > 0 ? nearbyAnomalies[0] : null;
     }
 
-    private string FormatTypeText(string type)
+    private string FormatDetectorTypeText(string type)
     {
-        // Limit to 8 characters and pad with spaces
-        if (type.Length > 8)
+        // Limit to 12 characters for detector mode
+        if (type.Length > 12)
         {
-            return type.Substring(0, 8);
+            return type.Substring(0, 12);
         }
         else
         {
-            // Pad with spaces to make it exactly 8 characters
-            return type.PadRight(8);
+            return type;
+        }
+    }
+
+    private string FormatListTypeText(string type)
+    {
+        // Limit to 9 characters for list mode
+        if (type.Length > 9)
+        {
+            return type.Substring(0, 9);
+        }
+        else
+        {
+            // Pad with spaces to make it exactly 9 characters
+            return type.PadRight(9);
         }
     }
 
@@ -241,8 +256,8 @@ public class DetectorDisplay : MonoBehaviour
             // Show threat level with special display for level 6
             threatLevelText.text = GetThreatLevelDisplay(closestAnomaly.ThreatLevel);
             
-            // Show formatted anomaly type in type text
-            string formattedType = FormatTypeText(closestAnomaly.GetDisplayType());
+            // Show formatted anomaly type in type text (12 character limit)
+            string formattedType = FormatDetectorTypeText(closestAnomaly.GetDisplayType());
             anomalyTypeText.text = formattedType;
             
             // Show direction in direction text
@@ -291,11 +306,25 @@ public class DetectorDisplay : MonoBehaviour
                 slot.text = "";
         }
         
+        // Clear level slots
+        foreach (TextMeshProUGUI slot in listLevelSlots)
+        {
+            if (slot != null)
+                slot.text = "";
+        }
+        
+        // Clear distance slots
+        foreach (TextMeshProUGUI slot in listDistanceSlots)
+        {
+            if (slot != null)
+                slot.text = "";
+        }
+        
         // Clear counter
         if (counterText != null)
             counterText.text = "";
         
-        // Display formatted anomaly type with threat level and distance in meters
+        // Display formatted anomaly type with separate level and distance slots
         int slotsToFill = Mathf.Min(nearbyAnomalies.Count, listSlots.Length);
         
         for (int i = 0; i < slotsToFill; i++)
@@ -305,14 +334,22 @@ public class DetectorDisplay : MonoBehaviour
                 Anomaly anomaly = nearbyAnomalies[i];
                 float distance = anomaly.GetDistance(playerTransform.position);
                 
-                // Format: "FormattedType ThreatLevel Dmeters"
-                // Example: "Ghost    !! D15" for level 6
-                // Example: "Radiatio L3 D25" for level 3
-                string formattedType = FormatTypeText(anomaly.GetDisplayType());
-                string threatDisplay = GetListThreatLevelDisplay(anomaly.ThreatLevel);
-                string displayText = $"{formattedType} {threatDisplay} D{Mathf.RoundToInt(distance)}";
+                // Format type text (9 character limit)
+                string formattedType = FormatListTypeText(anomaly.GetDisplayType());
+                listSlots[i].text = formattedType;
                 
-                listSlots[i].text = displayText;
+                // Set level in separate slot
+                if (i < listLevelSlots.Length && listLevelSlots[i] != null)
+                {
+                    string threatDisplay = GetListThreatLevelDisplay(anomaly.ThreatLevel);
+                    listLevelSlots[i].text = threatDisplay;
+                }
+                
+                // Set distance in separate slot
+                if (i < listDistanceSlots.Length && listDistanceSlots[i] != null)
+                {
+                    listDistanceSlots[i].text = $"D{Mathf.RoundToInt(distance)}";
+                }
             }
         }
         

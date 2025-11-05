@@ -27,18 +27,6 @@ public class PlayerController : MonoBehaviour
     public float slideDecayRate = 0.8f;
     public float minSlideSpeed = 3f;
     
-    [Header("Dash Settings")]
-    public float dashSpeed = 20f;
-    public float dashDuration = 0.2f;
-    public float dashCooldown = 1.5f;
-    public AnimationCurve dashSpeedCurve = AnimationCurve.EaseInOut(0f, 1f, 1f, 0f);
-    
-    [Header("Crouch Dash Settings")]
-    public bool enableCrouchDash = true;
-    public float crouchDashSpeed = 25f;
-    public bool autoSlideOnLanding = true;
-    public float crouchDashAirControl = 0.3f;
-    
     public float standingCameraHeight = 1.6f;
     public float crouchingCameraHeight = 0.8f;
     public float slidingCameraHeight = 0.5f;
@@ -52,7 +40,6 @@ public class PlayerController : MonoBehaviour
     public AudioClip slideSound;
     public AudioClip jumpSound;
     public AudioClip landingSound;
-    public AudioClip dashSound;
     
     [Header("Footstep Timing")]
     public float walkStepInterval = 0.5f;
@@ -71,10 +58,6 @@ public class PlayerController : MonoBehaviour
     [Header("Jump Sound Settings")]
     public float jumpVolume = 0.8f;
     public float jumpPitch = 1.0f;
-    
-    [Header("Dash Sound Settings")]
-    public float dashVolume = 0.8f;
-    public float dashPitch = 1.2f;
     
     [Header("Landing Sound Settings")]
     public float landingThreshold = 2.0f;
@@ -108,15 +91,6 @@ public class PlayerController : MonoBehaviour
     private float slideCooldownTimer = 0f;
     private Vector3 slideDirection;
     private float currentSlideSpeed;
-
-    private bool isDashing = false;
-    private float dashTimer = 0f;
-    private float dashCooldownTimer = 0f;
-    private Vector3 dashDirection;
-
-    private bool isCrouchDashing = false;
-    private bool shouldAutoSlide = false;
-    private Coroutine crouchDashCoroutine;
 
     private CameraController cameraController;
     private float currentSlideTilt = 0f;
@@ -154,11 +128,6 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
-        if (dashCooldownTimer > 0f)
-        {
-            dashCooldownTimer -= Time.deltaTime;
-        }
-        
         if (jumpCooldownTimer > 0f)
         {
             jumpCooldownTimer -= Time.deltaTime;
@@ -169,24 +138,11 @@ public class PlayerController : MonoBehaviour
             crouchCooldownTimer -= Time.deltaTime;
         }
 
-        HandleDashInput();
-        HandleDash();
-        HandleCrouchDash();
         HandleCrouchInput();
         HandleSliding();
         HandleCrouch();
         
-        if (isDashing)
-        {
-        }
-        else if (isCrouchDashing)
-        {
-            HandleCrouchDashMovement();
-        }
-        else
-        {
-            HandleMovement();
-        }
+        HandleMovement();
         
         HandleSlideTilt();
         HandleFootsteps();
@@ -194,192 +150,6 @@ public class PlayerController : MonoBehaviour
         if (isCrouching && !isSliding && !wantsToCrouch && CanStandUp())
         {
             AutoStandUp();
-        }
-    }
-
-    void HandleDashInput()
-    {
-        if (Input.GetKeyDown(KeyCode.Q) && dashCooldownTimer <= 0f && !isDashing && !isSliding && !isCrouchDashing)
-        {
-            Vector2 input = new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"));
-            bool isMovingForward = input.y > 0.1f;
-
-            if (enableCrouchDash && isSprinting && isMovingForward && !controller.isGrounded)
-            {
-                StartCrouchDash();
-            }
-            else
-            {
-                StartDash();
-            }
-        }
-    }
-
-    void HandleDash()
-    {
-        if (isDashing)
-        {
-            dashTimer -= Time.deltaTime;
-
-            float normalizedTime = 1f - (dashTimer / dashDuration);
-            float speedMultiplier = dashSpeedCurve.Evaluate(normalizedTime);
-            float currentDashSpeed = dashSpeed * speedMultiplier;
-            
-            currentVelocity = dashDirection * currentDashSpeed;
-            moveDirection.x = currentVelocity.x;
-            moveDirection.z = currentVelocity.z;
-
-            moveDirection.y -= gravity * Time.deltaTime;
-            
-            controller.Move(moveDirection * Time.deltaTime);
-
-            if (dashTimer <= 0f)
-            {
-                EndDash();
-            }
-        }
-    }
-
-    void StartDash()
-    {
-        isDashing = true;
-        dashTimer = dashDuration;
-        dashCooldownTimer = dashCooldown;
-        
-        Vector2 input = new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"));
-        
-        if (input.magnitude > 0.1f)
-        {
-            dashDirection = new Vector3(input.x, 0, input.y).normalized;
-            dashDirection = transform.TransformDirection(dashDirection);
-        }
-        else
-        {
-            dashDirection = transform.forward;
-        }
-        
-        PlayDashSound();
-    }
-
-    void EndDash()
-    {
-        isDashing = false;
-        currentVelocity = dashDirection * currentSpeed;
-        StopDashSound();
-    }
-
-    void HandleCrouchDash()
-    {
-        if (isCrouchDashing && controller.isGrounded && shouldAutoSlide)
-        {
-            if (IsSlidingAllowed())
-            {
-                StartSlide();
-                shouldAutoSlide = false;
-            }
-        }
-    }
-
-    void HandleCrouchDashMovement()
-    {
-        if (!controller.isGrounded)
-        {
-            moveDirection.y -= gravity * 0.5f * Time.deltaTime;
-        }
-        
-        if (!controller.isGrounded)
-        {
-            Vector2 input = new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"));
-            if (input.magnitude > 0.1f)
-            {
-                Vector3 desiredMoveDirection = new Vector3(input.x, 0, input.y);
-                desiredMoveDirection = transform.TransformDirection(desiredMoveDirection);
-                
-                Vector3 airControl = desiredMoveDirection * (airAcceleration * crouchDashAirControl * Time.deltaTime);
-                currentVelocity += airControl;
-                
-                float horizontalSpeed = new Vector3(currentVelocity.x, 0, currentVelocity.z).magnitude;
-                if (horizontalSpeed > crouchDashSpeed)
-                {
-                    Vector3 horizontalVel = new Vector3(currentVelocity.x, 0, currentVelocity.z).normalized * crouchDashSpeed;
-                    currentVelocity = new Vector3(horizontalVel.x, currentVelocity.y, horizontalVel.z);
-                }
-                
-                moveDirection.x = currentVelocity.x;
-                moveDirection.z = currentVelocity.z;
-            }
-        }
-        
-        controller.Move(moveDirection * Time.deltaTime);
-    }
-
-    void StartCrouchDash()
-    {
-        if (crouchDashCoroutine != null)
-            StopCoroutine(crouchDashCoroutine);
-            
-        crouchDashCoroutine = StartCoroutine(PerformCrouchDash());
-    }
-
-    IEnumerator PerformCrouchDash()
-    {
-        isCrouchDashing = true;
-        dashCooldownTimer = dashCooldown;
-        
-        isCrouching = true;
-        targetHeight = crouchHeight;
-        UpdateHeight();
-        
-        Vector2 input = new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"));
-        if (input.magnitude > 0.1f && input.y > 0.1f)
-        {
-            dashDirection = new Vector3(input.x, 0, input.y).normalized;
-            dashDirection = transform.TransformDirection(dashDirection);
-        }
-        else
-        {
-            dashDirection = transform.forward;
-        }
-        
-        currentVelocity = dashDirection * crouchDashSpeed;
-        moveDirection.x = currentVelocity.x;
-        moveDirection.z = currentVelocity.z;
-        
-        float crouchDashTimer = dashDuration;
-        
-        while (crouchDashTimer > 0f && isCrouchDashing)
-        {
-            crouchDashTimer -= Time.deltaTime;
-            
-            float normalizedTime = 1f - (crouchDashTimer / dashDuration);
-            float speedMultiplier = dashSpeedCurve.Evaluate(normalizedTime);
-            float currentCrouchDashSpeed = crouchDashSpeed * speedMultiplier;
-            
-            Vector3 newVelocity = dashDirection * currentCrouchDashSpeed;
-            currentVelocity = new Vector3(newVelocity.x, currentVelocity.y, newVelocity.z);
-            moveDirection.x = currentVelocity.x;
-            moveDirection.z = currentVelocity.z;
-            
-            yield return null;
-        }
-        
-        shouldAutoSlide = autoSlideOnLanding;
-        
-        while (!controller.isGrounded && isCrouchDashing)
-        {
-            yield return null;
-        }
-        
-        isCrouchDashing = false;
-    }
-
-    public void CancelCrouchDash()
-    {
-        if (isCrouchDashing && crouchDashCoroutine != null)
-        {
-            StopCoroutine(crouchDashCoroutine);
-            isCrouchDashing = false;
-            shouldAutoSlide = false;
         }
     }
 
@@ -706,8 +476,6 @@ public class PlayerController : MonoBehaviour
         isSprinting = (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) && 
                      !isCrouching && 
                      !isSliding && 
-                     !isDashing &&
-                     !isCrouchDashing &&
                      input.magnitude > 0.1f;
         
         float targetMovementSpeed;
@@ -742,7 +510,7 @@ public class PlayerController : MonoBehaviour
             moveDirection.x = currentVelocity.x;
             moveDirection.z = currentVelocity.z;
 
-            if (Input.GetButton("Jump") && jumpCooldownTimer <= 0f && !isCrouching && !isDashing && !isCrouchDashing)
+            if (Input.GetButton("Jump") && jumpCooldownTimer <= 0f && !isCrouching)
             {
                 PlayJumpSound();
                 moveDirection.y = jumpSpeed;
@@ -792,7 +560,7 @@ public class PlayerController : MonoBehaviour
         bool hasMovementInput = input.magnitude > 0.1f;
         bool isMoving = currentVelocity.magnitude > 0.1f;
         
-        bool shouldPlayFootsteps = isGrounded && hasMovementInput && isMoving && !isSliding && !isDashing && !isCrouchDashing;
+        bool shouldPlayFootsteps = isGrounded && hasMovementInput && isMoving && !isSliding;
 
         if (isGrounded && !wasGrounded)
         {
@@ -900,27 +668,6 @@ public class PlayerController : MonoBehaviour
         footstepAudioSource.Play();
     }
 
-    void PlayDashSound()
-    {
-        if (footstepAudioSource == null || dashSound == null) return;
-
-        footstepAudioSource.clip = dashSound;
-        footstepAudioSource.pitch = dashPitch;
-        footstepAudioSource.volume = dashVolume;
-        footstepAudioSource.loop = false;
-        footstepAudioSource.Play();
-    }
-
-    void StopDashSound()
-    {
-        if (footstepAudioSource == null) return;
-        
-        if (footstepAudioSource.isPlaying && footstepAudioSource.clip == dashSound)
-        {
-            footstepAudioSource.Stop();
-        }
-    }
-
     void PlayLandingSound(float landingVelocity)
     {
         if (footstepAudioSource == null || landingSound == null) return;
@@ -942,16 +689,6 @@ public class PlayerController : MonoBehaviour
     public bool IsSliding()
     {
         return isSliding;
-    }
-
-    public bool IsDashing()
-    {
-        return isDashing;
-    }
-
-    public bool IsCrouchDashing()
-    {
-        return isCrouchDashing;
     }
 
     public bool IsGrounded()
@@ -977,10 +714,5 @@ public class PlayerController : MonoBehaviour
     public float GetSprintSpeed()
     {
         return sprintSpeed;
-    }
-
-    public float GetDashCooldownProgress()
-    {
-        return Mathf.Clamp01(1f - (dashCooldownTimer / dashCooldown));
     }
 }

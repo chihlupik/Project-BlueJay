@@ -21,6 +21,9 @@ public class Door : MonoBehaviour
     public Material unlockedMaterial;
     public Renderer doorRenderer;
     
+    [Header("Player Restrictions")]
+    public bool allowPlayerToClose = false; // Set this to false to restrict player from closing
+    
     private bool isLocked = true;
     private bool isOpen = false;
     private Quaternion closedRotation;
@@ -60,6 +63,13 @@ public class Door : MonoBehaviour
             return;
         }
 
+        // Restrict closing if door is open and player isn't allowed to close
+        if (isOpen && !allowPlayerToClose)
+        {
+            Debug.Log("Player cannot close this door");
+            return;
+        }
+
         isOpen = !isOpen;
         
         if (isOpen)
@@ -69,6 +79,33 @@ public class Door : MonoBehaviour
         else
         {
             PlaySound(closeSound);
+        }
+    }
+
+    // Public method to close door (can be called by other systems)
+    public void CloseDoor()
+    {
+        if (isOpen)
+        {
+            isOpen = false;
+            PlaySound(closeSound);
+            Debug.Log("Door closed by system");
+        }
+    }
+
+    // Public method to open door
+    public void OpenDoor()
+    {
+        if (isLocked)
+        {
+            PlaySound(lockedSound);
+            return;
+        }
+
+        if (!isOpen)
+        {
+            isOpen = true;
+            PlaySound(openSound);
         }
     }
 
@@ -98,6 +135,7 @@ public class Door : MonoBehaviour
     {
         isLocked = false;
         UpdateDoorAppearance();
+        PlaySound(unlockSound);
         Debug.Log("Door has been unlocked!");
     }
 
@@ -105,6 +143,7 @@ public class Door : MonoBehaviour
     {
         isLocked = true;
         UpdateDoorAppearance();
+        Debug.Log("Door has been locked!");
     }
 
     void UpdateDoorAppearance()
@@ -123,7 +162,34 @@ public class Door : MonoBehaviour
         }
     }
 
+    // Method to allow other systems to control player closing permission
+    public void SetPlayerCanClose(bool canClose)
+    {
+        allowPlayerToClose = canClose;
+        Debug.Log("Player close permission set to: " + canClose);
+    }
+
+    // Getters for door state
     public bool IsLocked() { return isLocked; }
     public bool IsOpen() { return isOpen; }
     public int GetDoorID() { return doorID; }
+    
+    // Force open/close methods for system use
+    public void ForceOpenDoor()
+    {
+        isOpen = true;
+        if (audioSource != null && openSound != null)
+        {
+            audioSource.PlayOneShot(openSound);
+        }
+    }
+    
+    public void ForceCloseDoor()
+    {
+        isOpen = false;
+        if (audioSource != null && closeSound != null)
+        {
+            audioSource.PlayOneShot(closeSound);
+        }
+    }
 }

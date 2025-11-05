@@ -5,3 +5,4 @@ Builds/
 .vscode/
 *.csproj
 *.sln
+*.slnx

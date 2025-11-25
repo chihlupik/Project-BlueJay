@@ -9,28 +9,28 @@ public class CameraController : MonoBehaviour
     public float zoomSpeed = 10f;
     public Transform playerBody;
 
-    [Header("Run FOV Settings")]
-    public bool enableRunFOV = true;
-    public float runFOV = 65f;
-    public float runFOVSpeed = 8f;
+    [Header("Movement FOV Settings")]
+    public bool enableMovementFOV = true;
+    public float movementFOV = 65f;
+    public float fovChangeSpeed = 8f;
     
-    public KeyCode flashlightKey = KeyCode.F;
-    private Light flashlight;
-    private bool isFlashlightOn = false;
+    [Header("Device Settings")]
+    public KeyCode toggleDeviceKey = KeyCode.Q;
+    public GameObject deviceObject; // Assign your device in the inspector
+    private bool isDeviceActive = false;
 
-    [Header("Flashlight Sound")]
-    public AudioSource flashlightAudioSource;
-    public AudioClip flashlightClickSound;
-    public float flashlightVolume = 0.8f;
-    public float flashlightPitch = 1.0f;
+    [Header("Device Sound")]
+    public AudioSource deviceAudioSource;
+    public AudioClip activateSound;
+    public AudioClip deactivateSound;
+    public float deviceVolume = 0.8f;
+    public float devicePitch = 1.0f;
 
     [Header("View Bobbing")]
     public bool enableViewBobbing = true;
     public float walkBobbingIntensity = 0.015f;
-    public float sprintBobbingIntensity = 0.025f;
     public float crouchBobbingIntensity = 0.008f;
     public float walkBobbingSpeed = 3f;
-    public float sprintBobbingSpeed = 4f;
     public float crouchBobbingSpeed = 2f;
     public float bobbingTransitionSharpness = 8f;
 
@@ -82,27 +82,28 @@ public class CameraController : MonoBehaviour
             targetFOV = defaultFOV;
         }
 
-        flashlight = GetComponentInChildren<Light>();
-        if (flashlight != null)
-        {
-            flashlight.enabled = isFlashlightOn;
-        }
-
         playerController = GetComponentInParent<PlayerController>();
 
-        if (flashlightAudioSource == null)
+        if (deviceAudioSource == null)
         {
-            flashlightAudioSource = GetComponent<AudioSource>();
+            deviceAudioSource = GetComponent<AudioSource>();
         }
 
         originalLocalPosition = transform.localPosition;
+
+        // Initialize device state
+        if (deviceObject != null)
+        {
+            deviceObject.SetActive(false);
+            isDeviceActive = false;
+        }
     }
 
     void Update()
     {
-        HandleFlashlight();
+        HandleDeviceToggle();
         HandleZoom();
-        HandleRunFOV();
+        HandleMovementFOV();
         HandleMouseLook();
         HandleViewBobbing();
         HandleObjectDragging();
@@ -111,17 +112,47 @@ public class CameraController : MonoBehaviour
         ApplyFOV();
     }
 
-    void HandleFlashlight()
+    void HandleDeviceToggle()
     {
-        if (flashlight == null) return;
-
-        if (Input.GetKeyDown(flashlightKey))
+        if (Input.GetKeyDown(toggleDeviceKey))
         {
-            isFlashlightOn = !isFlashlightOn;
-            flashlight.enabled = isFlashlightOn;
-            
-            PlayFlashlightSound();
+            if (deviceObject == null)
+            {
+                Debug.LogWarning("No device object assigned to CameraController!");
+                return;
+            }
+
+            if (isDeviceActive)
+            {
+                DeactivateDevice();
+            }
+            else
+            {
+                ActivateDevice();
+            }
         }
+    }
+
+    void ActivateDevice()
+    {
+        if (isDeviceActive || deviceObject == null) return;
+
+        // Simply activate the device - it will handle its own orbiting behavior
+        deviceObject.SetActive(true);
+        isDeviceActive = true;
+
+        PlayDeviceSound(activateSound);
+    }
+
+    void DeactivateDevice()
+    {
+        if (!isDeviceActive || deviceObject == null) return;
+
+        // Simply deactivate the device
+        deviceObject.SetActive(false);
+        isDeviceActive = false;
+
+        PlayDeviceSound(deactivateSound);
     }
 
     void HandleZoom()
@@ -136,27 +167,28 @@ public class CameraController : MonoBehaviour
         if (Input.GetMouseButtonUp(1))
         {
             isZooming = false;
+            targetFOV = defaultFOV;
         }
     }
 
-    void HandleRunFOV()
+    void HandleMovementFOV()
     {
-        if (playerCamera == null || !enableRunFOV) return;
+        if (playerCamera == null || !enableMovementFOV || isZooming) return;
 
-        if (isZooming)
+        // Check if moving forward (W key pressed)
+        bool isMovingForward = Input.GetKey(KeyCode.W);
+        
+        // Check if crouching
+        bool isCrouching = playerController != null && playerController.IsCrouching();
+
+        // Apply movement FOV only when moving forward AND not crouching AND grounded
+        if (playerController != null && playerController.IsGrounded() && isMovingForward && !isCrouching)
         {
-            targetFOV = zoomFOV;
+            targetFOV = movementFOV;
         }
         else
         {
-            if (playerController != null && playerController.IsSprinting() && playerController.IsGrounded())
-            {
-                targetFOV = runFOV;
-            }
-            else
-            {
-                targetFOV = defaultFOV;
-            }
+            targetFOV = defaultFOV;
         }
     }
 
@@ -165,20 +197,7 @@ public class CameraController : MonoBehaviour
         if (playerCamera == null) return;
 
         float currentFOV = playerCamera.fieldOfView;
-        float interpolationSpeed;
-
-        if (isZooming)
-        {
-            interpolationSpeed = zoomSpeed;
-        }
-        else if (Mathf.Abs(targetFOV - defaultFOV) > 1f)
-        {
-            interpolationSpeed = runFOVSpeed;
-        }
-        else
-        {
-            interpolationSpeed = runFOVSpeed * 1.5f;
-        }
+        float interpolationSpeed = isZooming ? zoomSpeed : fovChangeSpeed;
 
         playerCamera.fieldOfView = Mathf.Lerp(currentFOV, targetFOV, interpolationSpeed * Time.deltaTime);
     }
@@ -246,18 +265,13 @@ public class CameraController : MonoBehaviour
                 targetBobbingIntensity = crouchBobbingIntensity;
                 targetBobbingSpeed = crouchBobbingSpeed;
             }
-            else if (playerController.IsSprinting())
-            {
-                targetBobbingIntensity = sprintBobbingIntensity;
-                targetBobbingSpeed = sprintBobbingSpeed;
-            }
             else
             {
                 targetBobbingIntensity = walkBobbingIntensity;
                 targetBobbingSpeed = walkBobbingSpeed;
             }
 
-            float speedMultiplier = Mathf.Clamp01(horizontalSpeed / playerController.GetSprintSpeed());
+            float speedMultiplier = Mathf.Clamp01(horizontalSpeed / playerController.GetSpeed());
             targetBobbingIntensity *= speedMultiplier;
             targetBobbingIntensity *= 0.7f;
         }
@@ -398,15 +412,15 @@ public class CameraController : MonoBehaviour
         originalLocalPosition = transform.localPosition;
     }
 
-    void PlayFlashlightSound()
+    void PlayDeviceSound(AudioClip clip)
     {
-        if (flashlightAudioSource == null || flashlightClickSound == null) return;
+        if (deviceAudioSource == null || clip == null) return;
 
-        flashlightAudioSource.clip = flashlightClickSound;
-        flashlightAudioSource.volume = flashlightVolume;
-        flashlightAudioSource.pitch = flashlightPitch;
-        flashlightAudioSource.loop = false;
-        flashlightAudioSource.Play();
+        deviceAudioSource.clip = clip;
+        deviceAudioSource.volume = deviceVolume;
+        deviceAudioSource.pitch = devicePitch;
+        deviceAudioSource.loop = false;
+        deviceAudioSource.Play();
     }
 
     public void SetExternalTilt(float tilt)
@@ -432,6 +446,16 @@ public class CameraController : MonoBehaviour
     public bool IsDraggingObject()
     {
         return draggedObject != null;
+    }
+
+    public bool IsDeviceActive()
+    {
+        return isDeviceActive;
+    }
+
+    public GameObject GetCurrentDevice()
+    {
+        return deviceObject;
     }
 
     public Rigidbody GetDraggedObject()

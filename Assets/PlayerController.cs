@@ -4,7 +4,6 @@ using System.Collections;
 public class PlayerController : MonoBehaviour
 {
     public float speed = 6f;
-    public float sprintSpeed = 10f;
     public float crouchSpeed = 3f;
     public float jumpSpeed = 8f;
     public float gravity = 20.0f;
@@ -23,16 +22,31 @@ public class PlayerController : MonoBehaviour
     public float slideCooldown = 1.5f;
     public float slideHeight = 0.5f;
     
+    [Header("Dive Settings")]
+    public float diveSpeed = 12f;
+    public float diveDuration = 0.8f;
+    public float diveCooldown = 1f;
+    public float diveHeight = 0.5f;
+    public float diveControlMultiplier = 0.3f;
+    
     [Header("Slide Decay Settings")]
     public float slideDecayRate = 0.8f;
     public float minSlideSpeed = 3f;
     
+    [Header("Dive Decay Settings")]
+    public float diveDecayRate = 0.7f;
+    public float minDiveSpeed = 4f;
+    
     public float standingCameraHeight = 1.6f;
     public float crouchingCameraHeight = 0.8f;
     public float slidingCameraHeight = 0.5f;
+    public float divingCameraHeight = 0.3f;
     
     public float slideTiltAngle = 10f;
     public float tiltTransitionSpeed = 5f;
+    
+    [Header("Movement Control During Actions")]
+    public float slideControlMultiplier = 0.4f;
     
     [Header("Footstep Sounds")]
     public AudioSource footstepAudioSource;
@@ -40,24 +54,26 @@ public class PlayerController : MonoBehaviour
     public AudioClip slideSound;
     public AudioClip jumpSound;
     public AudioClip landingSound;
+    public AudioClip diveSound;
     
     [Header("Footstep Timing")]
     public float walkStepInterval = 0.5f;
-    public float runStepInterval = 0.3f;
     public float crouchStepInterval = 0.7f;
     
     [Header("Footstep Audio Settings")]
     public float pitchRandomness = 0.1f;
     public float walkVolume = 0.8f;
-    public float runVolume = 1.0f;
     public float crouchVolume = 0.6f;
     public float walkPitch = 1.0f;
-    public float runPitch = 1.3f;
     public float crouchPitch = 0.8f;
     
     [Header("Jump Sound Settings")]
     public float jumpVolume = 0.8f;
     public float jumpPitch = 1.0f;
+    
+    [Header("Dive Sound Settings")]
+    public float diveVolume = 1.0f;
+    public float divePitch = 1.2f;
     
     [Header("Landing Sound Settings")]
     public float landingThreshold = 2.0f;
@@ -75,9 +91,9 @@ public class PlayerController : MonoBehaviour
     private CapsuleCollider capsuleCollider;
     private Vector3 moveDirection = Vector3.zero;
     private Vector3 currentVelocity;
-    private bool isSprinting = false;
     private bool isCrouching = false;
     private bool isSliding = false;
+    private bool isDiving = false;
     private bool wantsToCrouch = false;
     private float currentSpeed;
     private float jumpCooldownTimer = 0f;
@@ -91,6 +107,12 @@ public class PlayerController : MonoBehaviour
     private float slideCooldownTimer = 0f;
     private Vector3 slideDirection;
     private float currentSlideSpeed;
+    private bool isSlideFromDive = false;
+
+    private float diveTimer = 0f;
+    private float diveCooldownTimer = 0f;
+    private Vector3 diveDirection;
+    private float currentDiveSpeed;
 
     private CameraController cameraController;
     private float currentSlideTilt = 0f;
@@ -138,8 +160,19 @@ public class PlayerController : MonoBehaviour
             crouchCooldownTimer -= Time.deltaTime;
         }
 
+        if (slideCooldownTimer > 0f)
+        {
+            slideCooldownTimer -= Time.deltaTime;
+        }
+
+        if (diveCooldownTimer > 0f)
+        {
+            diveCooldownTimer -= Time.deltaTime;
+        }
+
         HandleCrouchInput();
         HandleSliding();
+        HandleDive();
         HandleCrouch();
         
         HandleMovement();
@@ -147,7 +180,7 @@ public class PlayerController : MonoBehaviour
         HandleSlideTilt();
         HandleFootsteps();
         
-        if (isCrouching && !isSliding && !wantsToCrouch && CanStandUp())
+        if (isCrouching && !isSliding && !isDiving && !wantsToCrouch && CanStandUp())
         {
             AutoStandUp();
         }
@@ -155,16 +188,18 @@ public class PlayerController : MonoBehaviour
 
     void HandleCrouchInput()
     {
-        if ((Input.GetKeyDown(KeyCode.LeftControl)) && crouchCooldownTimer <= 0f)
+        // Crouch on SHIFT key (both left and right shift) - WORKS IN AIR TOO
+        if ((Input.GetKeyDown(KeyCode.LeftShift) || Input.GetKeyDown(KeyCode.RightShift)) && crouchCooldownTimer <= 0f)
         {
             wantsToCrouch = true;
             
-            if (isSprinting && IsSlidingAllowed())
+            // Only allow sliding when grounded
+            if (controller.isGrounded && IsSlidingAllowed())
             {
                 StartSlide();
                 crouchCooldownTimer = crouchCooldown;
             }
-            else if (!isCrouching)
+            else if (!isCrouching) // Now works in air too
             {
                 isCrouching = true;
                 targetHeight = crouchHeight;
@@ -172,11 +207,19 @@ public class PlayerController : MonoBehaviour
             }
         }
         
-        if (Input.GetKeyUp(KeyCode.LeftControl))
+        // Stop crouching when SHIFT is released
+        if (Input.GetKeyUp(KeyCode.LeftShift) || Input.GetKeyUp(KeyCode.RightShift))
         {
             wantsToCrouch = false;
             
-            if (isCrouching && !isSliding && CanStandUp())
+            // Cancel slide if SHIFT is released during slide
+            // BUT don't cancel if this is a slide from dive
+            if (isSliding && !isSlideFromDive)
+            {
+                EndSlide();
+                crouchCooldownTimer = crouchCooldown;
+            }
+            else if (isCrouching && !isSliding && !isDiving && CanStandUp())
             {
                 AutoStandUp();
             }
@@ -185,7 +228,7 @@ public class PlayerController : MonoBehaviour
 
     void AutoStandUp()
     {
-        if (isCrouching && !isSliding && CanStandUp() && crouchCooldownTimer <= 0f)
+        if (isCrouching && !isSliding && !isDiving && CanStandUp() && crouchCooldownTimer <= 0f)
         {
             isCrouching = false;
             targetHeight = standingHeight;
@@ -195,63 +238,175 @@ public class PlayerController : MonoBehaviour
 
     void HandleSliding()
     {
-        if (slideCooldownTimer > 0f)
-        {
-            slideCooldownTimer -= Time.deltaTime;
-        }
-
         if (isSliding)
         {
             slideTimer -= Time.deltaTime;
 
+            // Apply speed decay for slide
             float normalizedTime = 1f - (slideTimer / slideDuration);
             float speedMultiplier = Mathf.Lerp(1f, 0f, normalizedTime * slideDecayRate);
             currentSlideSpeed = Mathf.Lerp(slideSpeed, minSlideSpeed, normalizedTime * slideDecayRate);
+            
+            // Apply movement control during slide
+            Vector2 input = new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"));
+            if (input.magnitude > 0.1f)
+            {
+                Vector3 desiredMoveDirection = new Vector3(input.x, 0, input.y);
+                desiredMoveDirection = transform.TransformDirection(desiredMoveDirection);
+                
+                // Allow steering during slide with control multiplier
+                Vector3 steerDirection = Vector3.Lerp(slideDirection, desiredMoveDirection, slideControlMultiplier * Time.deltaTime);
+                slideDirection = steerDirection.normalized;
+            }
             
             currentVelocity = slideDirection * currentSlideSpeed;
             moveDirection.x = currentVelocity.x;
             moveDirection.z = currentVelocity.z;
 
-            if ((slideTimer <= 0f || Input.GetButton("Jump")) && crouchCooldownTimer <= 0f)
+            // Check for slide cancellation conditions
+            bool shouldCancelSlide = false;
+
+            // For regular slides, cancel if SHIFT is not held
+            // For slides from dive, cancel if SHIFT IS pressed (special case)
+            if (isSlideFromDive)
+            {
+                // Cancel slide-from-dive when SHIFT is pressed
+                if (wantsToCrouch)
+                {
+                    shouldCancelSlide = true;
+                }
+            }
+            else
+            {
+                // Cancel regular slide when SHIFT is not held
+                if (!wantsToCrouch)
+                {
+                    shouldCancelSlide = true;
+                }
+            }
+            
+            // Cancel slide if timer runs out or player jumps
+            if (slideTimer <= 0f || Input.GetButton("Jump"))
+            {
+                shouldCancelSlide = true;
+            }
+            // Cancel slide ONLY if we hit a wall - REMOVED EDGE DETECTION
+            else if (CheckWallCollision())
+            {
+                shouldCancelSlide = true;
+            }
+
+            if (shouldCancelSlide && crouchCooldownTimer <= 0f)
             {
                 EndSlide();
                 crouchCooldownTimer = crouchCooldown;
             }
-            else
+        }
+    }
+
+    void HandleDive()
+    {
+        if (isDiving)
+        {
+            diveTimer -= Time.deltaTime;
+
+            // Apply speed decay for dive (similar to slide)
+            float normalizedTime = 1f - (diveTimer / diveDuration);
+            currentDiveSpeed = Mathf.Lerp(diveSpeed, minDiveSpeed, normalizedTime * diveDecayRate);
+            
+            // Apply dive movement with control
+            Vector2 input = new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"));
+            if (input.magnitude > 0.1f)
             {
-                Vector2 input = new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"));
-                if (input.magnitude > 0.1f)
+                Vector3 desiredMoveDirection = new Vector3(input.x, 0, input.y);
+                desiredMoveDirection = transform.TransformDirection(desiredMoveDirection);
+                
+                // Allow control during dive
+                Vector3 steerDirection = Vector3.Lerp(diveDirection, desiredMoveDirection, diveControlMultiplier * Time.deltaTime);
+                diveDirection = steerDirection.normalized;
+            }
+            
+            currentVelocity = diveDirection * currentDiveSpeed;
+            moveDirection.x = currentVelocity.x;
+            moveDirection.z = currentVelocity.z;
+
+            // End dive when timer runs out or we hit the ground
+            if (diveTimer <= 0f || controller.isGrounded)
+            {
+                EndDive();
+                
+                // If we hit the ground during dive, start sliding automatically
+                if (controller.isGrounded && !isSliding && slideCooldownTimer <= 0f)
                 {
-                    Vector3 desiredMoveDirection = new Vector3(input.x, 0, input.y);
-                    desiredMoveDirection = transform.TransformDirection(desiredMoveDirection);
-                    
-                    Vector3 steerDirection = Vector3.Lerp(slideDirection, desiredMoveDirection, 0.3f * Time.deltaTime);
-                    slideDirection = steerDirection.normalized;
+                    StartSlideFromDive();
                 }
+            }
+        }
+        else
+        {
+            // Handle dive - space press while in air AND holding W
+            bool isHoldingW = Input.GetKey(KeyCode.W);
+            if (Input.GetButtonDown("Jump") && !controller.isGrounded && diveCooldownTimer <= 0f && isHoldingW)
+            {
+                StartDive();
             }
         }
     }
 
+    bool CheckWallCollision()
+    {
+        // Use a sphere cast to detect walls in front of the player
+        float checkDistance = 0.5f;
+        float sphereRadius = 0.3f;
+        Vector3 castOrigin = transform.position + Vector3.up * 0.1f; // Slightly above ground
+        
+        // Cast in the slide direction
+        if (Physics.SphereCast(castOrigin, sphereRadius, slideDirection, out RaycastHit hit, checkDistance))
+        {
+            // Check if the hit object is not the ground and not a trigger
+            // Also check if it's actually a wall (not just a small obstacle)
+            if (!hit.collider.isTrigger && Vector3.Angle(hit.normal, Vector3.up) > 60f)
+            {
+                // It's likely a wall (not ground) - cancel slide
+                return true;
+            }
+        }
+        
+        // REMOVED CharacterController collision flags check as it's too sensitive
+        // between objects
+        
+        return false;
+    }
+
     bool IsSlidingAllowed()
     {
+        // Check if moving forward (W key pressed or forward input)
+        bool isMovingForward = Input.GetKey(KeyCode.W) || Input.GetAxis("Vertical") > 0.1f;
+        
         return controller.isGrounded && 
                slideCooldownTimer <= 0f && 
                crouchCooldownTimer <= 0f &&
                !isSliding &&
-               currentVelocity.magnitude > sprintSpeed * 0.7f;
+               currentVelocity.magnitude > speed * 0.7f &&
+               isMovingForward; // Only allow slide when moving forward
     }
 
     void StartSlide()
     {
         isSliding = true;
+        isSlideFromDive = false; // Regular slide, not from dive
         isCrouching = true;
         slideTimer = slideDuration;
         slideCooldownTimer = slideCooldown;
         
-        slideDirection = new Vector3(currentVelocity.x, 0, currentVelocity.z).normalized;
-        if (slideDirection.magnitude < 0.1f)
+        // Always slide in the forward direction when triggered by forward movement
+        slideDirection = transform.forward;
+        
+        // But if we have significant existing velocity, use that direction instead
+        Vector3 horizontalVelocity = new Vector3(currentVelocity.x, 0, currentVelocity.z);
+        if (horizontalVelocity.magnitude > 0.5f)
         {
-            slideDirection = transform.forward;
+            slideDirection = horizontalVelocity.normalized;
         }
 
         targetHeight = slideHeight;
@@ -260,11 +415,83 @@ public class PlayerController : MonoBehaviour
         targetSlideTilt = -slideTiltAngle;
     }
 
+    void StartSlideFromDive()
+    {
+        isSliding = true;
+        isSlideFromDive = true; // Mark as slide from dive
+        isCrouching = true;
+        slideTimer = slideDuration;
+        slideCooldownTimer = slideCooldown;
+        
+        // Continue in the dive direction
+        slideDirection = diveDirection;
+        
+        // Maintain some of the dive speed, but ensure it's not slower than min slide speed
+        currentSlideSpeed = Mathf.Max(currentDiveSpeed * 0.8f, minSlideSpeed);
+
+        targetHeight = slideHeight;
+        
+        targetSlideTilt = -slideTiltAngle;
+        
+        // Play slide sound for slide from dive
+        PlaySlideSound();
+    }
+
+    void StartDive()
+    {
+        isDiving = true;
+        isCrouching = true;
+        diveTimer = diveDuration;
+        diveCooldownTimer = diveCooldown;
+        
+        // Dive in the forward direction
+        diveDirection = transform.forward;
+        
+        // Use current movement direction if moving
+        Vector3 horizontalVelocity = new Vector3(currentVelocity.x, 0, currentVelocity.z);
+        if (horizontalVelocity.magnitude > 0.5f)
+        {
+            diveDirection = horizontalVelocity.normalized;
+        }
+
+        targetHeight = diveHeight;
+        currentDiveSpeed = diveSpeed;
+        
+        // Keep current vertical velocity for forward dive (no downward force)
+        // This allows the dive to maintain the player's current upward/downward momentum
+        
+        PlayDiveSound();
+    }
+
     void EndSlide()
     {
         isSliding = false;
+        isSlideFromDive = false; // Reset the flag
         
         targetSlideTilt = 0f;
+        
+        if (wantsToCrouch)
+        {
+            targetHeight = crouchHeight;
+            isCrouching = true;
+        }
+        else
+        {
+            if (CanStandUp())
+            {
+                AutoStandUp();
+            }
+            else
+            {
+                targetHeight = crouchHeight;
+                isCrouching = true;
+            }
+        }
+    }
+
+    void EndDive()
+    {
+        isDiving = false;
         
         if (wantsToCrouch)
         {
@@ -334,6 +561,10 @@ public class PlayerController : MonoBehaviour
         {
             targetHeight = slideHeight;
         }
+        else if (isDiving)
+        {
+            targetHeight = diveHeight;
+        }
         else if (isCrouching)
         {
             targetHeight = crouchHeight;
@@ -383,6 +614,10 @@ public class PlayerController : MonoBehaviour
             {
                 targetCameraHeight = slidingCameraHeight;
             }
+            else if (isDiving)
+            {
+                targetCameraHeight = divingCameraHeight;
+            }
             else if (isCrouching)
             {
                 targetCameraHeight = crouchingCameraHeight;
@@ -406,7 +641,7 @@ public class PlayerController : MonoBehaviour
 
     bool CanStandUp()
     {
-        if (!isCrouching || isSliding) return false;
+        if (!isCrouching || isSliding || isDiving) return false;
         
         float checkDistance = standingHeight - currentHeight + 0.2f; 
         Vector3 rayStart = transform.position + Vector3.up * (currentHeight + 0.1f);
@@ -456,7 +691,7 @@ public class PlayerController : MonoBehaviour
 
     void HandleMovement()
     {
-        if (isSliding)
+        if (isSliding || isDiving)
         {
             moveDirection.y -= gravity * Time.deltaTime;
             controller.Move(moveDirection * Time.deltaTime);
@@ -473,19 +708,12 @@ public class PlayerController : MonoBehaviour
         Vector3 desiredMoveDirection = new Vector3(input.x, 0, input.y);
         desiredMoveDirection = transform.TransformDirection(desiredMoveDirection);
         
-        isSprinting = (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) && 
-                     !isCrouching && 
-                     !isSliding && 
-                     input.magnitude > 0.1f;
-        
         float targetMovementSpeed;
-        if (isCrouching)
+        
+        // Apply crouch speed ONLY when crouching AND grounded
+        if (isCrouching && controller.isGrounded)
         {
             targetMovementSpeed = crouchSpeed;
-        }
-        else if (isSprinting)
-        {
-            targetMovementSpeed = sprintSpeed;
         }
         else
         {
@@ -534,8 +762,7 @@ public class PlayerController : MonoBehaviour
             
             if (input.magnitude > 0.1f)
             {
-                float effectiveAirAcceleration = isSprinting ? airAcceleration * 1.5f : airAcceleration;
-                currentVelocity = Vector3.Lerp(currentVelocity, targetAirVelocity, effectiveAirAcceleration * Time.deltaTime);
+                currentVelocity = Vector3.Lerp(currentVelocity, targetAirVelocity, airAcceleration * Time.deltaTime);
             }
             else
             {
@@ -560,7 +787,7 @@ public class PlayerController : MonoBehaviour
         bool hasMovementInput = input.magnitude > 0.1f;
         bool isMoving = currentVelocity.magnitude > 0.1f;
         
-        bool shouldPlayFootsteps = isGrounded && hasMovementInput && isMoving && !isSliding;
+        bool shouldPlayFootsteps = isGrounded && hasMovementInput && isMoving && !isSliding && !isDiving;
 
         if (isGrounded && !wasGrounded)
         {
@@ -601,6 +828,13 @@ public class PlayerController : MonoBehaviour
                 PlaySlideSound();
             }
         }
+        else if (isDiving)
+        {
+            if (!footstepAudioSource.isPlaying || footstepAudioSource.clip != diveSound)
+            {
+                PlayDiveSound();
+            }
+        }
         else if (footstepAudioSource.clip == slideSound && footstepAudioSource.isPlaying)
         {
             footstepAudioSource.Stop();
@@ -613,8 +847,6 @@ public class PlayerController : MonoBehaviour
     {
         if (isCrouching)
             return crouchStepInterval;
-        else if (isSprinting)
-            return runStepInterval;
         else
             return walkStepInterval;
     }
@@ -628,12 +860,7 @@ public class PlayerController : MonoBehaviour
         float basePitch = walkPitch;
         float baseVolume = walkVolume;
 
-        if (isSprinting)
-        {
-            basePitch = runPitch;
-            baseVolume = runVolume;
-        }
-        else if (isCrouching)
+        if (isCrouching)
         {
             basePitch = crouchPitch;
             baseVolume = crouchVolume;
@@ -654,6 +881,17 @@ public class PlayerController : MonoBehaviour
         footstepAudioSource.pitch = slidePitch;
         footstepAudioSource.volume = slideVolume;
         footstepAudioSource.loop = true;
+        footstepAudioSource.Play();
+    }
+
+    void PlayDiveSound()
+    {
+        if (footstepAudioSource == null || diveSound == null) return;
+
+        footstepAudioSource.clip = diveSound;
+        footstepAudioSource.pitch = divePitch;
+        footstepAudioSource.volume = diveVolume;
+        footstepAudioSource.loop = false;
         footstepAudioSource.Play();
     }
 
@@ -691,6 +929,11 @@ public class PlayerController : MonoBehaviour
         return isSliding;
     }
 
+    public bool IsDiving()
+    {
+        return isDiving;
+    }
+
     public bool IsGrounded()
     {
         return controller.isGrounded;
@@ -706,13 +949,8 @@ public class PlayerController : MonoBehaviour
         return isCrouching;
     }
 
-    public bool IsSprinting()
+    public float GetSpeed()
     {
-        return isSprinting;
-    }
-
-    public float GetSprintSpeed()
-    {
-        return sprintSpeed;
+        return speed;
     }
 }

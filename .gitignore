@@ -2,6 +2,7 @@ Library/
 Logs/
 UserSettings/
 Builds/
+Temp/
 .vscode/
 *.csproj
 *.sln

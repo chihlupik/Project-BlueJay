@@ -129,133 +129,6 @@ AudioSource:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
---- !u!1 &2811737358470486543
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 681885889901748351}
-  - component: {fileID: 2997159055329984281}
-  - component: {fileID: 4710362041289237277}
-  m_Layer: 0
-  m_Name: Flashlight
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &681885889901748351
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2811737358470486543}
-  serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 1225042836282784052}
-  m_LocalEulerAnglesHint: {x: 90, y: 0, z: 0}
---- !u!108 &2997159055329984281
-Light:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2811737358470486543}
-  m_Enabled: 1
-  serializedVersion: 11
-  m_Type: 0
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
-  m_Intensity: 1
-  m_Range: 20
-  m_SpotAngle: 60
-  m_InnerSpotAngle: 30
-  m_CookieSize: 10
-  m_Shadows:
-    m_Type: 0
-    m_Resolution: -1
-    m_CustomResolution: -1
-    m_Strength: 1
-    m_Bias: 0.05
-    m_NormalBias: 0.4
-    m_NearPlane: 0.2
-    m_CullingMatrixOverride:
-      e00: 1
-      e01: 0
-      e02: 0
-      e03: 0
-      e10: 0
-      e11: 1
-      e12: 0
-      e13: 0
-      e20: 0
-      e21: 0
-      e22: 1
-      e23: 0
-      e30: 0
-      e31: 0
-      e32: 0
-      e33: 1
-    m_UseCullingMatrixOverride: 0
-  m_Cookie: {fileID: 0}
-  m_DrawHalo: 0
-  m_Flare: {fileID: 0}
-  m_RenderMode: 0
-  m_CullingMask:
-    serializedVersion: 2
-    m_Bits: 4294967295
-  m_RenderingLayerMask: 1
-  m_Lightmapping: 4
-  m_LightShadowCasterMode: 0
-  m_AreaSize: {x: 1, y: 1}
-  m_BounceIntensity: 1
-  m_ColorTemperature: 6570
-  m_UseColorTemperature: 0
-  m_BoundingSphereOverride: {x: 0, y: 0, z: 0, w: 0}
-  m_UseBoundingSphereOverride: 0
-  m_UseViewFrustumForShadowCasterCull: 1
-  m_ForceVisible: 0
-  m_ShadowRadius: 0
-  m_ShadowAngle: 0
-  m_LightUnit: 1
-  m_LuxAtDistance: 1
-  m_EnableSpotReflector: 1
---- !u!114 &4710362041289237277
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2811737358470486543}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 474bcb49853aa07438625e644c072ee6, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_UsePipelineSettings: 1
-  m_AdditionalLightsShadowResolutionTier: 2
-  m_CustomShadowLayers: 0
-  m_LightCookieSize: {x: 1, y: 1}
-  m_LightCookieOffset: {x: 0, y: 0}
-  m_SoftShadowQuality: 0
-  m_RenderingLayersMask:
-    serializedVersion: 0
-    m_Bits: 1
-  m_ShadowRenderingLayersMask:
-    serializedVersion: 0
-    m_Bits: 1
-  m_Version: 4
-  m_LightLayerMask: 1
-  m_ShadowLayerMask: 1
-  m_RenderingLayers: 1
-  m_ShadowRenderingLayers: 1
 --- !u!1 &5299054632421562180
 GameObject:
   m_ObjectHideFlags: 0
@@ -419,7 +292,6 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 681885889901748351}
   - {fileID: 430073117780080912}
   m_Father: {fileID: 9071138960419723869}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -454,7 +326,7 @@ Camera:
     y: 0
     width: 1
     height: 1
-  near clip plane: 0.1
+  near clip plane: 0.01
   far clip plane: 1000
   field of view: 90
   orthographic: 0
@@ -518,6 +390,7 @@ MonoBehaviour:
   m_ScreenCoordScaleBias: {x: 0, y: 0, z: 0, w: 0}
   m_RequiresDepthTexture: 0
   m_RequiresColorTexture: 0
+  m_Version: 2
   m_TaaSettings:
     m_Quality: 3
     m_FrameInfluence: 0.1
@@ -525,7 +398,6 @@ MonoBehaviour:
     m_MipBias: 0
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
-  m_Version: 2
 --- !u!114 &7910271902563430660
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -544,20 +416,20 @@ MonoBehaviour:
   zoomFOV: 60
   zoomSpeed: 10
   playerBody: {fileID: 9071138960419723869}
-  enableRunFOV: 1
-  runFOV: 100
-  runFOVSpeed: 8
-  flashlightKey: 102
-  flashlightAudioSource: {fileID: 8217440915106478972}
-  flashlightClickSound: {fileID: 8300000, guid: cce17de6f947d5f028efca9aa1216fe8, type: 3}
-  flashlightVolume: 0.8
-  flashlightPitch: 1
+  enableMovementFOV: 1
+  movementFOV: 100
+  fovChangeSpeed: 8
+  toggleDeviceKey: 113
+  deviceObject: {fileID: 0}
+  deviceAudioSource: {fileID: 0}
+  activateSound: {fileID: 0}
+  deactivateSound: {fileID: 0}
+  deviceVolume: 0.8
+  devicePitch: 1
   enableViewBobbing: 1
   walkBobbingIntensity: 0.01
-  sprintBobbingIntensity: 0.01
   crouchBobbingIntensity: 0.01
   walkBobbingSpeed: 8
-  sprintBobbingSpeed: 10
   crouchBobbingSpeed: 6
   bobbingTransitionSharpness: 8
   enableObjectDragging: 1
@@ -732,17 +604,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1ae8bcd6570c130d4b570a1530e84418, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  speed: 2.5
-  sprintSpeed: 4
-  crouchSpeed: 1.5
+  speed: 5
+  crouchSpeed: 2
   jumpSpeed: 4
   gravity: 10
   speedTransitionSharpness: 10
   airControlMultiplier: 2.5
-  jumpCooldown: 0.75
+  jumpCooldown: 1
   crouchCooldown: 0.1
-  groundAcceleration: 12
-  groundDeceleration: 16
+  groundAcceleration: 10
+  groundDeceleration: 10
   airAcceleration: 4
   crouchHeight: 0.5
   crouchTransitionSpeed: 8
@@ -750,64 +621,43 @@ MonoBehaviour:
   slideDuration: 0.6
   slideCooldown: 1
   slideHeight: 0.5
+  diveSpeed: 8
+  diveDuration: 2
+  diveCooldown: 2
+  diveHeight: 0.5
+  diveControlMultiplier: 0.5
+  diveJumpMultiplier: 2
+  forwardSpeedMultiplier: 1
+  backwardSpeedMultiplier: 0.8
+  strafeSpeedMultiplier: 0.8
   slideDecayRate: 1
   minSlideSpeed: 2
-  dashSpeed: 20
-  dashDuration: 0.2
-  dashCooldown: 1.5
-  dashSpeedCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 1
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 1
-      value: 0
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  enableCrouchDash: 1
-  crouchDashSpeed: 25
-  autoSlideOnLanding: 1
-  crouchDashAirControl: 0.3
+  diveDecayRate: 1
+  minDiveSpeed: 4.5
   standingCameraHeight: 1.6
   crouchingCameraHeight: 0.8
   slidingCameraHeight: 0.25
+  divingCameraHeight: 0.3
   slideTiltAngle: -15
   tiltTransitionSpeed: 5
+  slideControlMultiplier: 2
   footstepAudioSource: {fileID: 7975378013366144170}
   walkFootstepSound: {fileID: 8300000, guid: a201c8bd4788ea9babf0cd1252829bfc, type: 3}
   slideSound: {fileID: 8300000, guid: 5e20b74e8227e089688d8ab551c87b4c, type: 3}
   jumpSound: {fileID: 8300000, guid: ece45cf4cf1746bac93b83007709e365, type: 3}
   landingSound: {fileID: 8300000, guid: 04718e3305b6b8bbea988ee7c2317fcd, type: 3}
-  dashSound: {fileID: 0}
-  walkStepInterval: 0.4
-  runStepInterval: 0.3
+  diveSound: {fileID: 0}
+  walkStepInterval: 0.35
   crouchStepInterval: 0.5
   pitchRandomness: 0.1
   walkVolume: 0.8
-  runVolume: 1
   crouchVolume: 0.6
   walkPitch: 1
-  runPitch: 1.3
   crouchPitch: 0.8
   jumpVolume: 0.8
   jumpPitch: 1
-  dashVolume: 0.8
-  dashPitch: 1.2
+  diveVolume: 1
+  divePitch: 1.2
   landingThreshold: 4.25
   landingBaseVolume: 0.5
   landingSpeedVolume: 0.5

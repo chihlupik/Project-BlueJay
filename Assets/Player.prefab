@@ -411,7 +411,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   sensitivity: 0.5
-  tiltAmount: 10
+  tiltAmount: 5
   tiltSmoothness: 5
   zoomFOV: 60
   zoomSpeed: 10
@@ -427,8 +427,8 @@ MonoBehaviour:
   deviceVolume: 0.8
   devicePitch: 1
   enableViewBobbing: 1
-  walkBobbingIntensity: 0.01
-  crouchBobbingIntensity: 0.01
+  walkBobbingIntensity: 0.015
+  crouchBobbingIntensity: 0.0125
   walkBobbingSpeed: 8
   crouchBobbingSpeed: 6
   bobbingTransitionSharpness: 8
@@ -606,7 +606,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   speed: 5
   crouchSpeed: 2
-  jumpSpeed: 4
+  jumpSpeed: 4.5
   gravity: 10
   speedTransitionSharpness: 10
   airControlMultiplier: 2.5
@@ -622,11 +622,18 @@ MonoBehaviour:
   slideCooldown: 1
   slideHeight: 0.5
   diveSpeed: 8
-  diveDuration: 2
+  diveDuration: 3
   diveCooldown: 2
-  diveHeight: 0.5
-  diveControlMultiplier: 0.5
+  diveHeight: 0.25
+  diveControlMultiplier: 0.75
   diveJumpMultiplier: 2
+  diveGravityMultiplier: 0.75
+  lockDiveDirection: 0
+  diveForwardBoost: 1
+  enableDoubleJump: 1
+  maxAirJumps: 1
+  doubleJumpSpeed: 4.5
+  doubleJumpCooldown: 0.2
   forwardSpeedMultiplier: 1
   backwardSpeedMultiplier: 0.8
   strafeSpeedMultiplier: 0.8
@@ -645,6 +652,7 @@ MonoBehaviour:
   walkFootstepSound: {fileID: 8300000, guid: a201c8bd4788ea9babf0cd1252829bfc, type: 3}
   slideSound: {fileID: 8300000, guid: 5e20b74e8227e089688d8ab551c87b4c, type: 3}
   jumpSound: {fileID: 8300000, guid: ece45cf4cf1746bac93b83007709e365, type: 3}
+  doubleJumpSound: {fileID: 0}
   landingSound: {fileID: 8300000, guid: 04718e3305b6b8bbea988ee7c2317fcd, type: 3}
   diveSound: {fileID: 0}
   walkStepInterval: 0.35
@@ -656,6 +664,8 @@ MonoBehaviour:
   crouchPitch: 0.8
   jumpVolume: 0.8
   jumpPitch: 1
+  doubleJumpVolume: 0.8
+  doubleJumpPitch: 1.2
   diveVolume: 1
   divePitch: 1.2
   landingThreshold: 4.25

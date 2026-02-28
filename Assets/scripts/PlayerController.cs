@@ -23,14 +23,23 @@ public class PlayerController : MonoBehaviour
     public float slideHeight = 0.5f;
     
     [Header("Dive Settings")]
-    public float diveSpeed = 12f;
-    public float diveDuration = 0.8f;
+    public float diveSpeed = 18f; // Increased for more distance
+    public float diveDuration = 1.2f; // Increased duration
     public float diveCooldown = 1f;
     public float diveHeight = 0.5f;
-    public float diveControlMultiplier = 0.3f;
-    public float diveJumpMultiplier = 1.5f; // NEW: Higher jump during dive
+    public float diveControlMultiplier = 0.05f; // Almost no control for straight trajectory
+    public float diveJumpMultiplier = 1.5f;
+    public float diveGravityMultiplier = 0.2f; // Greatly reduced gravity during dive
+    public bool lockDiveDirection = true; // Lock direction once dive starts
+    public float diveForwardBoost = 1.5f; // Extra forward boost on dive
     
-    [Header("Directional Speed Settings")] // NEW: Configurable directional speeds
+    [Header("Double Jump Settings")]
+    public bool enableDoubleJump = true;
+    public int maxAirJumps = 1;
+    public float doubleJumpSpeed = 8f;
+    public float doubleJumpCooldown = 0.2f;
+    
+    [Header("Directional Speed Settings")]
     public float forwardSpeedMultiplier = 1.0f;
     public float backwardSpeedMultiplier = 0.6f;
     public float strafeSpeedMultiplier = 0.8f;
@@ -40,8 +49,8 @@ public class PlayerController : MonoBehaviour
     public float minSlideSpeed = 3f;
     
     [Header("Dive Decay Settings")]
-    public float diveDecayRate = 0.7f;
-    public float minDiveSpeed = 4f;
+    public float diveDecayRate = 0.5f; // Slower decay for longer dive
+    public float minDiveSpeed = 8f; // Higher min speed
     
     public float standingCameraHeight = 1.6f;
     public float crouchingCameraHeight = 0.8f;
@@ -59,6 +68,7 @@ public class PlayerController : MonoBehaviour
     public AudioClip walkFootstepSound;
     public AudioClip slideSound;
     public AudioClip jumpSound;
+    public AudioClip doubleJumpSound;
     public AudioClip landingSound;
     public AudioClip diveSound;
     
@@ -76,6 +86,10 @@ public class PlayerController : MonoBehaviour
     [Header("Jump Sound Settings")]
     public float jumpVolume = 0.8f;
     public float jumpPitch = 1.0f;
+    
+    [Header("Double Jump Sound Settings")]
+    public float doubleJumpVolume = 0.8f;
+    public float doubleJumpPitch = 1.2f;
     
     [Header("Dive Sound Settings")]
     public float diveVolume = 1.0f;
@@ -119,6 +133,12 @@ public class PlayerController : MonoBehaviour
     private float diveCooldownTimer = 0f;
     private Vector3 diveDirection;
     private float currentDiveSpeed;
+    private float originalGravity; // Store original gravity for dive
+
+    // Double jump tracking
+    private int airJumpsRemaining = 0;
+    private bool hasDoubleJumped = false;
+    private float doubleJumpCooldownTimer = 0f;
 
     private CameraController cameraController;
     private float currentSlideTilt = 0f;
@@ -139,6 +159,7 @@ public class PlayerController : MonoBehaviour
         
         currentSpeed = speed;
         currentVelocity = Vector3.zero;
+        originalGravity = gravity;
         
         standingHeight = controller.height;
         standingCenter = controller.center;
@@ -152,13 +173,22 @@ public class PlayerController : MonoBehaviour
         }
         
         UpdateCameraHeight();
+        
+        // Initialize air jumps
+        airJumpsRemaining = maxAirJumps;
     }
 
     void Update()
     {
+        // Update timers
         if (jumpCooldownTimer > 0f)
         {
             jumpCooldownTimer -= Time.deltaTime;
+        }
+        
+        if (doubleJumpCooldownTimer > 0f)
+        {
+            doubleJumpCooldownTimer -= Time.deltaTime;
         }
         
         if (crouchCooldownTimer > 0f)
@@ -178,7 +208,7 @@ public class PlayerController : MonoBehaviour
 
         HandleCrouchInput();
         HandleSliding();
-        HandleDive();
+        HandleDiveInput();
         HandleCrouch();
         
         HandleMovement();
@@ -190,22 +220,28 @@ public class PlayerController : MonoBehaviour
         {
             AutoStandUp();
         }
+        
+        // Reset air jumps when grounded
+        if (controller.isGrounded)
+        {
+            airJumpsRemaining = maxAirJumps;
+            hasDoubleJumped = false;
+        }
     }
 
     void HandleCrouchInput()
     {
-        // Crouch on SHIFT key (both left and right shift) - WORKS IN AIR TOO
+        // Crouch on SHIFT key
         if ((Input.GetKeyDown(KeyCode.LeftShift) || Input.GetKeyDown(KeyCode.RightShift)) && crouchCooldownTimer <= 0f)
         {
             wantsToCrouch = true;
             
-            // Only allow sliding when grounded
             if (controller.isGrounded && IsSlidingAllowed())
             {
                 StartSlide();
                 crouchCooldownTimer = crouchCooldown;
             }
-            else if (!isCrouching) // Now works in air too
+            else if (!isCrouching)
             {
                 isCrouching = true;
                 targetHeight = crouchHeight;
@@ -213,13 +249,10 @@ public class PlayerController : MonoBehaviour
             }
         }
         
-        // Stop crouching when SHIFT is released
         if (Input.GetKeyUp(KeyCode.LeftShift) || Input.GetKeyUp(KeyCode.RightShift))
         {
             wantsToCrouch = false;
             
-            // Cancel slide if SHIFT is released during slide
-            // BUT don't cancel if this is a slide from dive
             if (isSliding && !isSlideFromDive)
             {
                 EndSlide();
@@ -248,19 +281,15 @@ public class PlayerController : MonoBehaviour
         {
             slideTimer -= Time.deltaTime;
 
-            // Apply speed decay for slide
             float normalizedTime = 1f - (slideTimer / slideDuration);
-            float speedMultiplier = Mathf.Lerp(1f, 0f, normalizedTime * slideDecayRate);
             currentSlideSpeed = Mathf.Lerp(slideSpeed, minSlideSpeed, normalizedTime * slideDecayRate);
             
-            // Apply movement control during slide
             Vector2 input = new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"));
             if (input.magnitude > 0.1f)
             {
                 Vector3 desiredMoveDirection = new Vector3(input.x, 0, input.y);
                 desiredMoveDirection = transform.TransformDirection(desiredMoveDirection);
                 
-                // Allow steering during slide with control multiplier
                 Vector3 steerDirection = Vector3.Lerp(slideDirection, desiredMoveDirection, slideControlMultiplier * Time.deltaTime);
                 slideDirection = steerDirection.normalized;
             }
@@ -269,14 +298,10 @@ public class PlayerController : MonoBehaviour
             moveDirection.x = currentVelocity.x;
             moveDirection.z = currentVelocity.z;
 
-            // Check for slide cancellation conditions
             bool shouldCancelSlide = false;
 
-            // For regular slides, cancel if SHIFT is not held
-            // For slides from dive, cancel if SHIFT IS pressed (special case)
             if (isSlideFromDive)
             {
-                // Cancel slide-from-dive when SHIFT is pressed
                 if (wantsToCrouch)
                 {
                     shouldCancelSlide = true;
@@ -284,19 +309,16 @@ public class PlayerController : MonoBehaviour
             }
             else
             {
-                // Cancel regular slide when SHIFT is not held
                 if (!wantsToCrouch)
                 {
                     shouldCancelSlide = true;
                 }
             }
             
-            // Cancel slide if timer runs out or player jumps
             if (slideTimer <= 0f || Input.GetButton("Jump"))
             {
                 shouldCancelSlide = true;
             }
-            // Cancel slide ONLY if we hit a wall - REMOVED EDGE DETECTION
             else if (CheckWallCollision())
             {
                 shouldCancelSlide = true;
@@ -310,83 +332,82 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    void HandleDive()
+    void HandleDiveInput()
     {
+        // Handle dive - E key press while in air
+        if (Input.GetKeyDown(KeyCode.E) && !controller.isGrounded && diveCooldownTimer <= 0f)
+        {
+            StartDive();
+        }
+        
         if (isDiving)
         {
-            diveTimer -= Time.deltaTime;
+            HandleDive();
+        }
+    }
 
-            // Apply speed decay for dive (similar to slide)
-            float normalizedTime = 1f - (diveTimer / diveDuration);
-            currentDiveSpeed = Mathf.Lerp(diveSpeed, minDiveSpeed, normalizedTime * diveDecayRate);
-            
-            // Apply dive movement with control
+    void HandleDive()
+    {
+        diveTimer -= Time.deltaTime;
+
+        // Apply speed decay for dive
+        float normalizedTime = 1f - (diveTimer / diveDuration);
+        currentDiveSpeed = Mathf.Lerp(diveSpeed, minDiveSpeed, normalizedTime * diveDecayRate);
+        
+        // Minimal control during dive for straight trajectory
+        if (!lockDiveDirection)
+        {
             Vector2 input = new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"));
             if (input.magnitude > 0.1f)
             {
                 Vector3 desiredMoveDirection = new Vector3(input.x, 0, input.y);
                 desiredMoveDirection = transform.TransformDirection(desiredMoveDirection);
                 
-                // Allow control during dive
+                // Very minimal steering for straight dive
                 Vector3 steerDirection = Vector3.Lerp(diveDirection, desiredMoveDirection, diveControlMultiplier * Time.deltaTime);
                 diveDirection = steerDirection.normalized;
             }
-            
-            currentVelocity = diveDirection * currentDiveSpeed;
-            moveDirection.x = currentVelocity.x;
-            moveDirection.z = currentVelocity.z;
-
-            // End dive when timer runs out or we hit the ground
-            if (diveTimer <= 0f || controller.isGrounded)
-            {
-                EndDive();
-                
-                // If we hit the ground during dive, start sliding automatically
-                if (controller.isGrounded && !isSliding && slideCooldownTimer <= 0f)
-                {
-                    StartSlideFromDive();
-                }
-            }
         }
-        else
+        
+        currentVelocity = diveDirection * currentDiveSpeed;
+        moveDirection.x = currentVelocity.x;
+        moveDirection.z = currentVelocity.z;
+
+        // Apply reduced gravity during dive for straighter trajectory
+        float diveGravity = gravity * diveGravityMultiplier;
+        moveDirection.y -= diveGravity * Time.deltaTime;
+
+        // End dive when timer runs out or we hit the ground
+        if (diveTimer <= 0f || controller.isGrounded)
         {
-            // Handle dive - space press while in air AND holding W
-            bool isHoldingW = Input.GetKey(KeyCode.W);
-            if (Input.GetButtonDown("Jump") && !controller.isGrounded && diveCooldownTimer <= 0f && isHoldingW)
+            EndDive();
+            
+            if (controller.isGrounded && !isSliding && slideCooldownTimer <= 0f)
             {
-                StartDive();
+                StartSlideFromDive();
             }
         }
     }
 
     bool CheckWallCollision()
     {
-        // Use a sphere cast to detect walls in front of the player
         float checkDistance = 0.5f;
         float sphereRadius = 0.3f;
-        Vector3 castOrigin = transform.position + Vector3.up * 0.1f; // Slightly above ground
+        Vector3 castOrigin = transform.position + Vector3.up * 0.1f;
         
-        // Cast in the slide direction
         if (Physics.SphereCast(castOrigin, sphereRadius, slideDirection, out RaycastHit hit, checkDistance))
         {
-            // Check if the hit object is not the ground and not a trigger
-            // Also check if it's actually a wall (not just a small obstacle)
             if (!hit.collider.isTrigger && Vector3.Angle(hit.normal, Vector3.up) > 60f)
             {
-                // It's likely a wall (not ground) - cancel slide
                 return true;
             }
         }
-        
-        // REMOVED CharacterController collision flags check as it's too sensitive
-        // between objects
         
         return false;
     }
 
     bool IsSlidingAllowed()
     {
-        // Check if moving forward (W key pressed or forward input)
         bool isMovingForward = Input.GetKey(KeyCode.W) || Input.GetAxis("Vertical") > 0.1f;
         
         return controller.isGrounded && 
@@ -394,21 +415,19 @@ public class PlayerController : MonoBehaviour
                crouchCooldownTimer <= 0f &&
                !isSliding &&
                currentVelocity.magnitude > speed * 0.7f &&
-               isMovingForward; // Only allow slide when moving forward
+               isMovingForward;
     }
 
     void StartSlide()
     {
         isSliding = true;
-        isSlideFromDive = false; // Regular slide, not from dive
+        isSlideFromDive = false;
         isCrouching = true;
         slideTimer = slideDuration;
         slideCooldownTimer = slideCooldown;
         
-        // Always slide in the forward direction when triggered by forward movement
         slideDirection = transform.forward;
         
-        // But if we have significant existing velocity, use that direction instead
         Vector3 horizontalVelocity = new Vector3(currentVelocity.x, 0, currentVelocity.z);
         if (horizontalVelocity.magnitude > 0.5f)
         {
@@ -424,22 +443,17 @@ public class PlayerController : MonoBehaviour
     void StartSlideFromDive()
     {
         isSliding = true;
-        isSlideFromDive = true; // Mark as slide from dive
+        isSlideFromDive = true;
         isCrouching = true;
         slideTimer = slideDuration;
         slideCooldownTimer = slideCooldown;
         
-        // Continue in the dive direction
         slideDirection = diveDirection;
-        
-        // Maintain some of the dive speed, but ensure it's not slower than min slide speed
         currentSlideSpeed = Mathf.Max(currentDiveSpeed * 0.8f, minSlideSpeed);
 
         targetHeight = slideHeight;
-        
         targetSlideTilt = -slideTiltAngle;
         
-        // Play slide sound for slide from dive
         PlaySlideSound();
     }
 
@@ -450,23 +464,37 @@ public class PlayerController : MonoBehaviour
         diveTimer = diveDuration;
         diveCooldownTimer = diveCooldown;
         
-        // Dive in the forward direction
+        // Lock dive direction to forward with optional boost
         diveDirection = transform.forward;
         
-        // Use current movement direction if moving
-        Vector3 horizontalVelocity = new Vector3(currentVelocity.x, 0, currentVelocity.z);
-        if (horizontalVelocity.magnitude > 0.5f)
+        // Apply forward boost if enabled
+        if (diveForwardBoost > 1f)
         {
-            diveDirection = horizontalVelocity.normalized;
+            diveDirection *= diveForwardBoost;
+        }
+        
+        // Use current movement direction if moving and not locking direction
+        if (!lockDiveDirection)
+        {
+            Vector3 horizontalVelocity = new Vector3(currentVelocity.x, 0, currentVelocity.z);
+            if (horizontalVelocity.magnitude > 0.5f)
+            {
+                diveDirection = horizontalVelocity.normalized;
+            }
         }
 
         targetHeight = diveHeight;
         currentDiveSpeed = diveSpeed;
         
-        // NEW: Apply higher jump when diving
-        if (moveDirection.y > 0) // Only boost if already jumping upward
+        // Apply jump boost if diving from a jump
+        if (moveDirection.y > 0)
         {
             moveDirection.y *= diveJumpMultiplier;
+        }
+        else
+        {
+            // Give a slight upward boost if diving from neutral/falling
+            moveDirection.y = jumpSpeed * 0.5f;
         }
         
         PlayDiveSound();
@@ -475,7 +503,7 @@ public class PlayerController : MonoBehaviour
     void EndSlide()
     {
         isSliding = false;
-        isSlideFromDive = false; // Reset the flag
+        isSlideFromDive = false;
         
         targetSlideTilt = 0f;
         
@@ -702,7 +730,11 @@ public class PlayerController : MonoBehaviour
     {
         if (isSliding || isDiving)
         {
-            moveDirection.y -= gravity * Time.deltaTime;
+            // For dive, gravity is already handled in HandleDive()
+            if (!isDiving)
+            {
+                moveDirection.y -= gravity * Time.deltaTime;
+            }
             controller.Move(moveDirection * Time.deltaTime);
             return;
         }
@@ -719,7 +751,6 @@ public class PlayerController : MonoBehaviour
         
         float targetMovementSpeed;
         
-        // Apply crouch speed ONLY when crouching AND grounded
         if (isCrouching && controller.isGrounded)
         {
             targetMovementSpeed = crouchSpeed;
@@ -729,7 +760,6 @@ public class PlayerController : MonoBehaviour
             targetMovementSpeed = speed;
         }
         
-        // NEW: Apply directional speed multipliers based on key input
         targetMovementSpeed = ApplyDirectionalSpeedMultipliers(targetMovementSpeed);
         
         currentSpeed = Mathf.Lerp(currentSpeed, targetMovementSpeed, speedTransitionSharpness * Time.deltaTime);
@@ -762,6 +792,8 @@ public class PlayerController : MonoBehaviour
                     horizontalVelocity = horizontalVelocity.normalized * currentSpeed;
                 }
                 currentVelocity = horizontalVelocity;
+                
+                airJumpsRemaining = maxAirJumps;
             }
             else
             {
@@ -770,6 +802,11 @@ public class PlayerController : MonoBehaviour
         }
         else
         {
+            if (enableDoubleJump && Input.GetButtonDown("Jump") && airJumpsRemaining > 0 && doubleJumpCooldownTimer <= 0f && !isCrouching)
+            {
+                PerformDoubleJump();
+            }
+            
             Vector3 targetAirVelocity = desiredMoveDirection * currentSpeed;
             
             if (input.magnitude > 0.1f)
@@ -789,7 +826,17 @@ public class PlayerController : MonoBehaviour
         controller.Move(moveDirection * Time.deltaTime);
     }
 
-    // NEW: Method to apply directional speed multipliers based on key input
+    void PerformDoubleJump()
+    {
+        moveDirection.y = doubleJumpSpeed;
+        
+        airJumpsRemaining--;
+        hasDoubleJumped = true;
+        doubleJumpCooldownTimer = doubleJumpCooldown;
+        
+        PlayDoubleJumpSound();
+    }
+
     float ApplyDirectionalSpeedMultipliers(float baseSpeed)
     {
         bool isMovingForward = Input.GetKey(KeyCode.W);
@@ -797,40 +844,31 @@ public class PlayerController : MonoBehaviour
         bool isMovingLeft = Input.GetKey(KeyCode.A);
         bool isMovingRight = Input.GetKey(KeyCode.D);
 
-        // If no movement keys are pressed, return base speed
         if (!isMovingForward && !isMovingBackward && !isMovingLeft && !isMovingRight)
             return baseSpeed;
 
-        // Determine the primary movement direction based on key presses
         float speedMultiplier = 1.0f;
 
         if (isMovingForward && !isMovingBackward)
         {
-            // Forward movement
             speedMultiplier = forwardSpeedMultiplier;
         }
         else if (isMovingBackward && !isMovingForward)
         {
-            // Backward movement
             speedMultiplier = backwardSpeedMultiplier;
         }
         else if ((isMovingLeft || isMovingRight) && !isMovingForward && !isMovingBackward)
         {
-            // Pure strafing (no forward/backward)
             speedMultiplier = strafeSpeedMultiplier;
         }
         else
         {
-            // Combined movement (e.g., W+A, W+D, S+A, S+D)
-            // Use the slower multiplier for combined movements
             if (isMovingBackward)
             {
-                // If moving backward with any strafe, use backward multiplier
                 speedMultiplier = backwardSpeedMultiplier;
             }
             else
             {
-                // If moving forward with strafe, use the slower of forward and strafe
                 speedMultiplier = Mathf.Min(forwardSpeedMultiplier, strafeSpeedMultiplier);
             }
         }
@@ -967,6 +1005,17 @@ public class PlayerController : MonoBehaviour
         footstepAudioSource.Play();
     }
 
+    void PlayDoubleJumpSound()
+    {
+        if (footstepAudioSource == null || doubleJumpSound == null) return;
+
+        footstepAudioSource.clip = doubleJumpSound;
+        footstepAudioSource.pitch = doubleJumpPitch;
+        footstepAudioSource.volume = doubleJumpVolume;
+        footstepAudioSource.loop = false;
+        footstepAudioSource.Play();
+    }
+
     void PlayLandingSound(float landingVelocity)
     {
         if (footstepAudioSource == null || landingSound == null) return;
@@ -1013,5 +1062,15 @@ public class PlayerController : MonoBehaviour
     public float GetSpeed()
     {
         return speed;
+    }
+    
+    public int GetRemainingAirJumps()
+    {
+        return airJumpsRemaining;
+    }
+    
+    public bool CanDoubleJump()
+    {
+        return enableDoubleJump && airJumpsRemaining > 0 && doubleJumpCooldownTimer <= 0f && !controller.isGrounded && !isCrouching;
     }
 }

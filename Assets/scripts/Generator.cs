@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using System.Linq;
 
 public class Generator : MonoBehaviour
 {
@@ -10,6 +11,10 @@ public class Generator : MonoBehaviour
     public GameObject straightPlatform;      // Long straight platform
     public GameObject smallPlatform;         // Small jump platform
     
+    [Header("Player")]
+    public GameObject playerPrefab;          // Player prefab to instantiate
+    public Vector3 playerSpawnOffset = new Vector3(0, 1f, 0); // Offset from platform center
+    
     [Header("Generation Settings")]
     public int width = 20;                    // Increased default width
     public int depth = 20;                    // Increased default depth
@@ -17,27 +22,45 @@ public class Generator : MonoBehaviour
     public float platformHeight = 5f;
     
     [Header("Platform Distribution")]
-    [Range(0, 100)] public int straightChance = 40;
-    [Range(0, 100)] public int cornerChance = 30;
-    [Range(0, 100)] public int smallChance = 30;
-    [Range(0, 100)] public int regularChance = 20; // Chance to use regular array platforms
+    [Range(0, 100)] public int straightChance = 60;  // Increased for more regular paths
+    [Range(0, 100)] public int cornerChance = 25;    // Slightly reduced
+    [Range(0, 100)] public int smallChance = 15;      // Reduced for less parkour
+    [Range(0, 100)] public int regularChance = 40;    // Increased for more regular platforms
     
     [Header("Generation Control")]
     public int targetPlatformCount = 200;      // How many platforms to generate
     public int maxBranchingDepth = 10;         // How far to branch out
-    public float branchChance = 0.3f;          // Chance to create a branch
+    public float branchChance = 0.2f;          // Reduced branch chance
     
     [Header("Jump Challenge Settings")]
     public int minJumpGap = 2;
-    public int maxJumpGap = 4;
-    public int minJumpChainLength = 2;
-    public int maxJumpChainLength = 5;
-    public float jumpChallengeChance = 0.2f;
+    public int maxJumpGap = 3;                  // Reduced max gap
+    public int minJumpChainLength = 1;           // Reduced minimum
+    public int maxJumpChainLength = 2;           // Reduced maximum
+    public float jumpChallengeChance = 0.1f;     // Reduced chance
+    
+    [Header("Path Settings")]
+    public int minPathLength = 5;                // Minimum platforms in main path
+    public int maxPathLength = 15;               // Maximum platforms in main path
+    public float cornerConnectionChance = 0.8f;  // Chance corners connect to long platforms
     
     private bool[,] grid;
     private List<Vector2Int> allPlatformPositions = new List<Vector2Int>();
     private Queue<Vector2Int> pendingExpansion = new Queue<Vector2Int>();
     private Vector2Int spawnPos;
+    
+    // Track platform types and their connections for validation
+    private Dictionary<Vector2Int, PlatformType> platformTypes = new Dictionary<Vector2Int, PlatformType>();
+    private Dictionary<Vector2Int, List<Vector2Int>> platformConnections = new Dictionary<Vector2Int, List<Vector2Int>>();
+    
+    private enum PlatformType
+    {
+        Spawn,
+        Regular,
+        Straight,
+        Corner,
+        Small
+    }
     
     void Start()
     {
@@ -56,6 +79,8 @@ public class Generator : MonoBehaviour
         grid = new bool[width, depth];
         allPlatformPositions.Clear();
         pendingExpansion.Clear();
+        platformTypes.Clear();
+        platformConnections.Clear();
         
         // Set spawn position at center (or approximately center)
         spawnPos = new Vector2Int(width / 2, depth / 2);
@@ -63,10 +88,15 @@ public class Generator : MonoBehaviour
         // Place spawn platform
         allPlatformPositions.Add(spawnPos);
         grid[spawnPos.x, spawnPos.y] = true;
+        platformTypes[spawnPos] = PlatformType.Spawn;
+        platformConnections[spawnPos] = new List<Vector2Int>();
         
         // Instantiate spawn platform immediately
         Vector3 spawnWorldPos = new Vector3(spawnPos.x * tileSize, platformHeight, spawnPos.y * tileSize);
         Instantiate(spawnPlatform, spawnWorldPos, Quaternion.identity, transform);
+        
+        // Spawn the player on the spawn platform
+        SpawnPlayer(spawnWorldPos);
         
         // Add spawn position to expansion queue
         pendingExpansion.Enqueue(spawnPos);
@@ -74,10 +104,39 @@ public class Generator : MonoBehaviour
         // Generate the rest of the level
         GenerateFromSpawn();
         
+        // Validate and fix corner platforms
+        ValidateAndFixCorners();
+        
         // Place all remaining platforms
         PlacePlatforms();
         
         Debug.Log($"Generated {allPlatformPositions.Count} platforms total");
+        LogPlatformStatistics();
+    }
+    
+    void SpawnPlayer(Vector3 spawnPlatformPosition)
+    {
+        if (playerPrefab == null)
+        {
+            Debug.LogWarning("Player prefab not assigned! Cannot spawn player.");
+            return;
+        }
+        
+        // Calculate player position (on top of the spawn platform with offset)
+        Vector3 playerPosition = spawnPlatformPosition + playerSpawnOffset;
+        
+        // Check if a player already exists and destroy it
+        GameObject existingPlayer = GameObject.FindGameObjectWithTag("Player");
+        if (existingPlayer != null)
+        {
+            DestroyImmediate(existingPlayer);
+        }
+        
+        // Instantiate the player
+        GameObject player = Instantiate(playerPrefab, playerPosition, Quaternion.identity);
+        player.tag = "Player"; // Ensure the player has the "Player" tag
+        
+        Debug.Log($"Player spawned at {playerPosition}");
     }
     
     void GenerateFromSpawn()
@@ -91,11 +150,11 @@ public class Generator : MonoBehaviour
             // Get available directions from current position
             List<Vector2Int> availableDirs = GetAvailableDirections(currentPos);
             
-            // Shuffle directions for randomness
-            ShuffleList(availableDirs);
+            // Shuffle directions for randomness - FIXED: Explicitly specify type
+            ShuffleList<Vector2Int>(availableDirs);
             
-            // Determine how many paths to create from this position (1-3 usually)
-            int pathsToCreate = Mathf.Min(availableDirs.Count, Random.Range(1, 4));
+            // Determine how many paths to create from this position (prefer 1-2 for more focused paths)
+            int pathsToCreate = Mathf.Min(availableDirs.Count, Random.Range(1, 3));
             
             for (int i = 0; i < pathsToCreate && platformsGenerated < targetPlatformCount; i++)
             {
@@ -103,42 +162,45 @@ public class Generator : MonoBehaviour
                 {
                     Vector2Int direction = availableDirs[i];
                     
-                    // Decide if this should be a jump challenge or normal path
+                    // Prefer regular paths over jump challenges
                     if (Random.value < jumpChallengeChance && platformsGenerated < targetPlatformCount - minJumpChainLength)
                     {
                         platformsGenerated = CreateJumpChain(currentPos, direction, platformsGenerated);
                     }
                     else
                     {
-                        platformsGenerated = CreateNormalPath(currentPos, direction, platformsGenerated);
+                        platformsGenerated = CreateRegularPath(currentPos, direction, platformsGenerated);
                     }
                 }
             }
             
-            // Occasionally create a branch from this position
+            // Occasionally create a branch, but make it smaller
             if (Random.value < branchChance && platformsGenerated < targetPlatformCount)
             {
-                CreateBranch(currentPos, platformsGenerated);
+                CreateSmallBranch(currentPos, ref platformsGenerated);
             }
         }
         
-        // If we still need more platforms, fill randomly but connected to existing ones
+        // If we still need more platforms, fill with connected straight platforms
         while (platformsGenerated < targetPlatformCount)
         {
-            FillRemainingPlatforms(ref platformsGenerated);
+            FillWithStraightPlatforms(ref platformsGenerated);
         }
     }
     
-    int CreateNormalPath(Vector2Int startPos, Vector2Int direction, int platformsGenerated)
+    int CreateRegularPath(Vector2Int startPos, Vector2Int direction, int platformsGenerated)
     {
-        // Determine path length (3-8 platforms)
-        int pathLength = Random.Range(3, 9);
+        // Longer paths for more regular gameplay
+        int pathLength = Random.Range(minPathLength, maxPathLength + 1);
         
         Vector2Int currentPos = startPos;
+        Vector2Int currentDir = direction;
+        int straightCount = 0;
+        int lastCornerPos = -1;
         
         for (int step = 1; step <= pathLength && platformsGenerated < targetPlatformCount; step++)
         {
-            Vector2Int nextPos = currentPos + direction;
+            Vector2Int nextPos = currentPos + currentDir;
             
             // Check bounds and availability
             if (IsValidPosition(nextPos) && !grid[nextPos.x, nextPos.y])
@@ -148,15 +210,31 @@ public class Generator : MonoBehaviour
                 grid[nextPos.x, nextPos.y] = true;
                 platformsGenerated++;
                 
-                // Add to expansion queue for further generation
-                pendingExpansion.Enqueue(nextPos);
+                // Record connection
+                RecordConnection(currentPos, nextPos);
                 
+                // Initially mark as straight
+                platformTypes[nextPos] = PlatformType.Straight;
+                straightCount++;
+                
+                pendingExpansion.Enqueue(nextPos);
                 currentPos = nextPos;
                 
-                // Chance to change direction slightly
-                if (step < pathLength && Random.value < 0.3f)
+                // Decide if we should create a corner (but ensure it connects properly)
+                if (step < pathLength && straightCount >= 3 && Random.value < 0.25f)
                 {
-                    direction = GetSlightDirectionChange(direction);
+                    if (CanCreateValidCorner(currentPos, currentDir, step - lastCornerPos > 3))
+                    {
+                        Vector2Int newDir = GetPerpendicularDirection(currentDir);
+                        
+                        // Mark current as corner
+                        platformTypes[currentPos] = PlatformType.Corner;
+                        lastCornerPos = step;
+                        
+                        // Ensure the next platform will be straight
+                        currentDir = newDir;
+                        straightCount = 0;
+                    }
                 }
             }
             else
@@ -168,8 +246,217 @@ public class Generator : MonoBehaviour
         return platformsGenerated;
     }
     
+    bool CanCreateValidCorner(Vector2Int pos, Vector2Int currentDir, bool farEnoughFromLastCorner)
+    {
+        if (!farEnoughFromLastCorner) return false;
+        
+        Vector2Int newDir = GetPerpendicularDirection(currentDir);
+        Vector2Int nextPos = pos + newDir;
+        Vector2Int prevPos = pos - currentDir;
+        
+        // Check if we can create a corner that connects to existing platforms properly
+        bool hasPrevConnection = IsValidPosition(prevPos) && grid[prevPos.x, prevPos.y];
+        bool hasSpaceForNext = IsValidPosition(nextPos) && !grid[nextPos.x, nextPos.y];
+        
+        // Also check if we could create a corner pair
+        bool couldBeCornerPair = false;
+        Vector2Int potentialPairPos = pos + currentDir + newDir;
+        if (IsValidPosition(potentialPairPos) && !grid[potentialPairPos.x, potentialPairPos.y])
+        {
+            couldBeCornerPair = true;
+        }
+        
+        return (hasPrevConnection && hasSpaceForNext) || couldBeCornerPair;
+    }
+    
+    void CreateSmallBranch(Vector2Int startPos, ref int platformsGenerated)
+    {
+        Vector2Int[] directions = new Vector2Int[]
+        {
+            new Vector2Int(1, 0),
+            new Vector2Int(-1, 0),
+            new Vector2Int(0, 1),
+            new Vector2Int(0, -1)
+        };
+        
+        // FIXED: Explicitly specify type for ShuffleList
+        List<Vector2Int> directionsList = new List<Vector2Int>(directions);
+        ShuffleList<Vector2Int>(directionsList);
+        
+        foreach (Vector2Int dir in directionsList)
+        {
+            Vector2Int branchPos = startPos + dir;
+            
+            if (IsValidPosition(branchPos) && !grid[branchPos.x, branchPos.y])
+            {
+                // Create a small branch with 2-3 platforms
+                int branchLength = Random.Range(2, 4);
+                Vector2Int currentPos = startPos;
+                Vector2Int currentDir = dir;
+                
+                for (int i = 0; i < branchLength; i++)
+                {
+                    Vector2Int nextPos = currentPos + currentDir;
+                    
+                    if (IsValidPosition(nextPos) && !grid[nextPos.x, nextPos.y])
+                    {
+                        allPlatformPositions.Add(nextPos);
+                        grid[nextPos.x, nextPos.y] = true;
+                        platformsGenerated++;
+                        
+                        RecordConnection(currentPos, nextPos);
+                        
+                        // Mark as straight or small
+                        if (i == branchLength - 1)
+                        {
+                            platformTypes[nextPos] = PlatformType.Small;
+                        }
+                        else
+                        {
+                            platformTypes[nextPos] = PlatformType.Straight;
+                        }
+                        
+                        pendingExpansion.Enqueue(nextPos);
+                        currentPos = nextPos;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+    }
+    
+    void FillWithStraightPlatforms(ref int platformsGenerated)
+    {
+        // Try to extend existing straight paths
+        List<Vector2Int> straightPositions = platformTypes
+            .Where(kvp => kvp.Value == PlatformType.Straight)
+            .Select(kvp => kvp.Key)
+            .ToList();
+        
+        // FIXED: Explicitly specify type for ShuffleList
+        ShuffleList<Vector2Int>(straightPositions);
+        
+        foreach (Vector2Int pos in straightPositions)
+        {
+            // Try to extend in the direction of the straight platform
+            Vector2Int[] directions = GetPlatformDirections(pos);
+            
+            foreach (Vector2Int dir in directions)
+            {
+                Vector2Int nextPos = pos + dir;
+                
+                if (IsValidPosition(nextPos) && !grid[nextPos.x, nextPos.y])
+                {
+                    allPlatformPositions.Add(nextPos);
+                    grid[nextPos.x, nextPos.y] = true;
+                    platformsGenerated++;
+                    
+                    RecordConnection(pos, nextPos);
+                    platformTypes[nextPos] = PlatformType.Straight;
+                    pendingExpansion.Enqueue(nextPos);
+                    return;
+                }
+            }
+        }
+    }
+    
+    void ValidateAndFixCorners()
+    {
+        bool cornersFixed = false;
+        int maxIterations = 10;
+        int iteration = 0;
+        
+        while (!cornersFixed && iteration < maxIterations)
+        {
+            cornersFixed = true;
+            List<Vector2Int> cornersToCheck = platformTypes
+                .Where(kvp => kvp.Value == PlatformType.Corner)
+                .Select(kvp => kvp.Key)
+                .ToList();
+            
+            foreach (Vector2Int cornerPos in cornersToCheck)
+            {
+                if (!IsCornerValid(cornerPos))
+                {
+                    FixCornerPlacement(cornerPos);
+                    cornersFixed = false;
+                }
+            }
+            iteration++;
+        }
+    }
+    
+    bool IsCornerValid(Vector2Int cornerPos)
+    {
+        List<Vector2Int> connections = GetConnections(cornerPos);
+        
+        // Corner needs at least 2 connections
+        if (connections.Count < 2)
+            return false;
+        
+        // Check if connected to at least 2 long platforms (straight or corner)
+        int longPlatformConnections = 0;
+        foreach (Vector2Int connectedPos in connections)
+        {
+            if (platformTypes.ContainsKey(connectedPos))
+            {
+                PlatformType type = platformTypes[connectedPos];
+                if (type == PlatformType.Straight || type == PlatformType.Corner)
+                {
+                    longPlatformConnections++;
+                }
+            }
+        }
+        
+        // Valid if connected to 2+ long platforms OR in a pair with another corner
+        if (longPlatformConnections >= 2)
+            return true;
+        
+        // Check for corner pair (two corners connected to each other)
+        if (connections.Count == 1)
+        {
+            Vector2Int otherPos = connections[0];
+            if (platformTypes.ContainsKey(otherPos) && platformTypes[otherPos] == PlatformType.Corner)
+            {
+                // Check if the other corner also connects to at least one long platform
+                List<Vector2Int> otherConnections = GetConnections(otherPos);
+                foreach (Vector2Int otherConnected in otherConnections)
+                {
+                    if (otherConnected != cornerPos && 
+                        platformTypes.ContainsKey(otherConnected) && 
+                        platformTypes[otherConnected] == PlatformType.Straight)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        
+        return false;
+    }
+    
+    void FixCornerPlacement(Vector2Int cornerPos)
+    {
+        // Change invalid corner to straight platform
+        if (platformTypes.ContainsKey(cornerPos))
+        {
+            platformTypes[cornerPos] = PlatformType.Straight;
+            Debug.Log($"Fixed invalid corner at {cornerPos}");
+        }
+    }
+    
     int CreateJumpChain(Vector2Int startPos, Vector2Int direction, int platformsGenerated)
     {
+        // Reduced frequency and size of jump chains
+        if (Random.value > 0.3f) // Only create jump chains 30% of the time when selected
+        {
+            return CreateRegularPath(startPos, direction, platformsGenerated);
+        }
+        
         int gapSize = Random.Range(minJumpGap, maxJumpGap + 1);
         int chainLength = Random.Range(minJumpChainLength, maxJumpChainLength + 1);
         
@@ -177,7 +464,7 @@ public class Generator : MonoBehaviour
         
         for (int i = 0; i < chainLength && platformsGenerated < targetPlatformCount; i++)
         {
-            Vector2Int jumpPos = currentPos + direction * (gapSize + i + 1);
+            Vector2Int jumpPos = currentPos + direction * (gapSize + i);
             
             if (IsValidPosition(jumpPos) && !grid[jumpPos.x, jumpPos.y])
             {
@@ -185,8 +472,11 @@ public class Generator : MonoBehaviour
                 grid[jumpPos.x, jumpPos.y] = true;
                 platformsGenerated++;
                 
-                // Mark as small platform (we'll handle type later)
+                RecordConnection(currentPos, jumpPos);
+                platformTypes[jumpPos] = PlatformType.Small;
                 pendingExpansion.Enqueue(jumpPos);
+                
+                currentPos = jumpPos;
             }
             else
             {
@@ -197,9 +487,31 @@ public class Generator : MonoBehaviour
         return platformsGenerated;
     }
     
-    void CreateBranch(Vector2Int startPos, int platformsGenerated)
+    void RecordConnection(Vector2Int from, Vector2Int to)
     {
-        Vector2Int[] directions = new Vector2Int[]
+        if (!platformConnections.ContainsKey(from))
+            platformConnections[from] = new List<Vector2Int>();
+        if (!platformConnections.ContainsKey(to))
+            platformConnections[to] = new List<Vector2Int>();
+        
+        if (!platformConnections[from].Contains(to))
+            platformConnections[from].Add(to);
+        if (!platformConnections[to].Contains(from))
+            platformConnections[to].Add(from);
+    }
+    
+    List<Vector2Int> GetConnections(Vector2Int pos)
+    {
+        if (platformConnections.ContainsKey(pos))
+            return platformConnections[pos];
+        return new List<Vector2Int>();
+    }
+    
+    Vector2Int[] GetPlatformDirections(Vector2Int pos)
+    {
+        List<Vector2Int> directions = new List<Vector2Int>();
+        
+        Vector2Int[] possibleDirs = new Vector2Int[]
         {
             new Vector2Int(1, 0),
             new Vector2Int(-1, 0),
@@ -207,53 +519,16 @@ public class Generator : MonoBehaviour
             new Vector2Int(0, -1)
         };
         
-        // Find a free direction for branching
-        foreach (Vector2Int dir in directions)
+        foreach (Vector2Int dir in possibleDirs)
         {
-            Vector2Int branchPos = startPos + dir;
-            
-            if (IsValidPosition(branchPos) && !grid[branchPos.x, branchPos.y])
+            Vector2Int neighbor = pos + dir;
+            if (IsValidPosition(neighbor) && grid[neighbor.x, neighbor.y])
             {
-                allPlatformPositions.Add(branchPos);
-                grid[branchPos.x, branchPos.y] = true;
-                pendingExpansion.Enqueue(branchPos);
-                break;
-            }
-        }
-    }
-    
-    void FillRemainingPlatforms(ref int platformsGenerated)
-    {
-        // Try to add platforms adjacent to existing ones
-        List<Vector2Int> possiblePositions = new List<Vector2Int>();
-        
-        foreach (Vector2Int pos in allPlatformPositions)
-        {
-            Vector2Int[] neighbors = new Vector2Int[]
-            {
-                new Vector2Int(pos.x + 1, pos.y),
-                new Vector2Int(pos.x - 1, pos.y),
-                new Vector2Int(pos.x, pos.y + 1),
-                new Vector2Int(pos.x, pos.y - 1)
-            };
-            
-            foreach (Vector2Int neighbor in neighbors)
-            {
-                if (IsValidPosition(neighbor) && !grid[neighbor.x, neighbor.y])
-                {
-                    possiblePositions.Add(neighbor);
-                }
+                directions.Add(dir);
             }
         }
         
-        if (possiblePositions.Count > 0)
-        {
-            Vector2Int newPos = possiblePositions[Random.Range(0, possiblePositions.Count)];
-            allPlatformPositions.Add(newPos);
-            grid[newPos.x, newPos.y] = true;
-            pendingExpansion.Enqueue(newPos);
-            platformsGenerated++;
-        }
+        return directions.ToArray();
     }
     
     List<Vector2Int> GetAvailableDirections(Vector2Int pos)
@@ -273,7 +548,6 @@ public class Generator : MonoBehaviour
             Vector2Int nextPos = pos + dir;
             if (IsValidPosition(nextPos) && !grid[nextPos.x, nextPos.y])
             {
-                // Check if this direction already has too many platforms
                 int platformsInDirection = CountPlatformsInDirection(nextPos, dir);
                 if (platformsInDirection < maxBranchingDepth)
                 {
@@ -302,12 +576,16 @@ public class Generator : MonoBehaviour
     
     Vector2Int GetSlightDirectionChange(Vector2Int currentDir)
     {
-        // 70% chance to continue straight, 30% chance to turn
-        if (Random.value < 0.7f)
+        // 80% chance to continue straight (increased from 70%)
+        if (Random.value < 0.8f)
             return currentDir;
         
-        // Turn perpendicular
-        if (currentDir.x != 0) // Moving horizontally
+        return GetPerpendicularDirection(currentDir);
+    }
+    
+    Vector2Int GetPerpendicularDirection(Vector2Int dir)
+    {
+        if (dir.x != 0) // Moving horizontally
         {
             return Random.value < 0.5f ? new Vector2Int(0, 1) : new Vector2Int(0, -1);
         }
@@ -342,11 +620,35 @@ public class Generator : MonoBehaviour
             Vector3 worldPos = new Vector3(pos.x * tileSize, platformHeight, pos.y * tileSize);
             
             // Determine platform type
-            GameObject platformType = DeterminePlatformType(pos, i);
+            GameObject platformType = DetermineFinalPlatformType(pos, i);
             Quaternion rotation = DetermineRotation(pos, i, platformType);
             
             Instantiate(platformType, worldPos, rotation, transform);
         }
+    }
+    
+    GameObject DetermineFinalPlatformType(Vector2Int pos, int index)
+    {
+        // Use the pre-determined type if available
+        if (platformTypes.ContainsKey(pos))
+        {
+            switch (platformTypes[pos])
+            {
+                case PlatformType.Straight:
+                    return straightPlatform;
+                case PlatformType.Corner:
+                    return cornerPlatform;
+                case PlatformType.Small:
+                    return smallPlatform;
+                case PlatformType.Regular:
+                    if (platformPrefabs.Length > 0)
+                        return platformPrefabs[Random.Range(0, platformPrefabs.Length)];
+                    break;
+            }
+        }
+        
+        // Fallback to original determination logic
+        return DeterminePlatformType(pos, index);
     }
     
     GameObject DeterminePlatformType(Vector2Int pos, int index)
@@ -357,41 +659,7 @@ public class Generator : MonoBehaviour
             return platformPrefabs[Random.Range(0, platformPrefabs.Length)];
         }
         
-        // Check if this is part of a jump chain
-        if (index > 0 && index < allPlatformPositions.Count - 1)
-        {
-            Vector2Int prev = allPlatformPositions[index - 1];
-            Vector2Int next = allPlatformPositions[index + 1];
-            
-            float distanceToPrev = Vector2Int.Distance(pos, prev);
-            float distanceToNext = Vector2Int.Distance(pos, next);
-            
-            if (distanceToPrev > 1.1f || distanceToNext > 1.1f)
-            {
-                return smallPlatform;
-            }
-        }
-        
-        // Check for corners
-        if (index > 0 && index < allPlatformPositions.Count - 1)
-        {
-            Vector2Int prev = allPlatformPositions[index - 1];
-            Vector2Int next = allPlatformPositions[index + 1];
-            
-            Vector2Int dir1 = prev - pos;
-            Vector2Int dir2 = next - pos;
-            
-            if (dir1.x != dir2.x && dir1.y != dir2.y)
-            {
-                if (Mathf.Abs(dir1.x) <= 1 && Mathf.Abs(dir1.y) <= 1 &&
-                    Mathf.Abs(dir2.x) <= 1 && Mathf.Abs(dir2.y) <= 1)
-                {
-                    return cornerPlatform;
-                }
-            }
-        }
-        
-        // Random distribution
+        // Random distribution favoring straight platforms
         int roll = Random.Range(0, 100);
         if (roll < straightChance)
             return straightPlatform;
@@ -429,6 +697,7 @@ public class Generator : MonoBehaviour
             }
             else if (platformType == cornerPlatform)
             {
+                // Calculate corner rotation based on directions
                 if (dirFromPrev.x > 0 && dirToNext.y > 0)
                     return Quaternion.Euler(0, 0, 0);
                 else if (dirFromPrev.x > 0 && dirToNext.y < 0)
@@ -451,6 +720,17 @@ public class Generator : MonoBehaviour
         return Quaternion.identity;
     }
     
+    void LogPlatformStatistics()
+    {
+        int straightCount = platformTypes.Values.Count(t => t == PlatformType.Straight);
+        int cornerCount = platformTypes.Values.Count(t => t == PlatformType.Corner);
+        int smallCount = platformTypes.Values.Count(t => t == PlatformType.Small);
+        int regularCount = platformTypes.Values.Count(t => t == PlatformType.Regular);
+        int spawnCount = platformTypes.Values.Count(t => t == PlatformType.Spawn);
+        
+        Debug.Log($"Platform Statistics - Spawn: {spawnCount}, Straight: {straightCount}, Corner: {cornerCount}, Small: {smallCount}, Regular: {regularCount}");
+    }
+    
     void OnDrawGizmosSelected()
     {
         // Draw grid
@@ -470,13 +750,37 @@ public class Generator : MonoBehaviour
         Gizmos.color = Color.red;
         Gizmos.DrawSphere(spawnCenter, 2f);
         
-        // Draw path in play mode
+        // Draw path in play mode with color coding
         if (Application.isPlaying && allPlatformPositions != null)
         {
-            Gizmos.color = Color.green;
             foreach (Vector2Int pos in allPlatformPositions)
             {
                 Vector3 center = new Vector3(pos.x * tileSize, platformHeight + 1f, pos.y * tileSize);
+                
+                // Color code by platform type
+                if (platformTypes.ContainsKey(pos))
+                {
+                    switch (platformTypes[pos])
+                    {
+                        case PlatformType.Straight:
+                            Gizmos.color = Color.blue;
+                            break;
+                        case PlatformType.Corner:
+                            Gizmos.color = Color.magenta;
+                            break;
+                        case PlatformType.Small:
+                            Gizmos.color = Color.yellow;
+                            break;
+                        default:
+                            Gizmos.color = Color.green;
+                            break;
+                    }
+                }
+                else
+                {
+                    Gizmos.color = Color.green;
+                }
+                
                 Gizmos.DrawSphere(center, 0.5f);
             }
         }

@@ -419,30 +419,12 @@ MonoBehaviour:
   enableMovementFOV: 1
   movementFOV: 100
   fovChangeSpeed: 8
-  toggleDeviceKey: 113
-  deviceObject: {fileID: 0}
-  deviceAudioSource: {fileID: 0}
-  activateSound: {fileID: 0}
-  deactivateSound: {fileID: 0}
-  deviceVolume: 0.8
-  devicePitch: 1
   enableViewBobbing: 1
   walkBobbingIntensity: 0.015
   crouchBobbingIntensity: 0.0125
   walkBobbingSpeed: 8
   crouchBobbingSpeed: 6
   bobbingTransitionSharpness: 8
-  enableObjectDragging: 1
-  maxDragDistance: 2
-  dragStrength: 25
-  dragSmoothness: 8
-  rotationSmoothness: 5
-  maxDragMass: 50
-  draggableLayers:
-    serializedVersion: 2
-    m_Bits: 8
-  doorInteractionDistance: 2
-  interactKey: 101
 --- !u!114 &8165485645086197787
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -622,14 +604,23 @@ MonoBehaviour:
   slideCooldown: 1
   slideHeight: 0.5
   diveSpeed: 8
-  diveDuration: 3
+  diveDuration: 1.5
   diveCooldown: 2
   diveHeight: 0.25
   diveControlMultiplier: 0.75
   diveJumpMultiplier: 2
-  diveGravityMultiplier: 0.75
+  diveGravityMultiplier: 0.5
   lockDiveDirection: 0
   diveForwardBoost: 1
+  blockDiveTimer: 0
+  diveCancelJumpMultiplier: 0.5
+  allowDiveCancelWithJump: 1
+  minDiveSpeedThreshold: 0.5
+  diveVerticalMomentum: 2.5
+  preserveVerticalVelocity: 1
+  useSmoothGravityIncrease: 1
+  diveDecayRate: 1
+  minDiveSpeed: 4.5
   enableDoubleJump: 1
   maxAirJumps: 1
   doubleJumpSpeed: 4.5
@@ -639,8 +630,17 @@ MonoBehaviour:
   strafeSpeedMultiplier: 0.8
   slideDecayRate: 1
   minSlideSpeed: 2
-  diveDecayRate: 1
-  minDiveSpeed: 4.5
+  grappleKey: 101
+  grappleRange: 12.5
+  grappleSpeed: 8
+  grappleCooldown: 1
+  grappleLayerMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  grappleBoostMultiplier: 1.5
+  grappleBoostDuration: 1.5
+  grappleBoostControlMultiplier: 0.8
+  canCancelGrappleBoostWithJump: 1
   standingCameraHeight: 1.6
   crouchingCameraHeight: 0.8
   slidingCameraHeight: 0.25
@@ -652,9 +652,9 @@ MonoBehaviour:
   walkFootstepSound: {fileID: 8300000, guid: a201c8bd4788ea9babf0cd1252829bfc, type: 3}
   slideSound: {fileID: 8300000, guid: 5e20b74e8227e089688d8ab551c87b4c, type: 3}
   jumpSound: {fileID: 8300000, guid: ece45cf4cf1746bac93b83007709e365, type: 3}
-  doubleJumpSound: {fileID: 0}
   landingSound: {fileID: 8300000, guid: 04718e3305b6b8bbea988ee7c2317fcd, type: 3}
   diveSound: {fileID: 0}
+  grappleSound: {fileID: 0}
   walkStepInterval: 0.35
   crouchStepInterval: 0.5
   pitchRandomness: 0.1
@@ -664,8 +664,6 @@ MonoBehaviour:
   crouchPitch: 0.8
   jumpVolume: 0.8
   jumpPitch: 1
-  doubleJumpVolume: 0.8
-  doubleJumpPitch: 1.2
   diveVolume: 1
   divePitch: 1.2
   landingThreshold: 4.25
@@ -676,6 +674,8 @@ MonoBehaviour:
   maxLandingVelocity: 10
   slideVolume: 1
   slidePitch: 1
+  grappleVolume: 1
+  grapplePitch: 1
   cameraTransform: {fileID: 1225042836282784052}
   groundCheck: {fileID: 4986040500560392895}
 --- !u!143 &136189397598674078

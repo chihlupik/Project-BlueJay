@@ -276,24 +276,24 @@ MonoBehaviour:
   smallPlatform: {fileID: 1300683110965239243, guid: 980efecc406f72e349515e989d4b3ec1, type: 3}
   playerPrefab: {fileID: 8421076372328126467, guid: 27b7b27555d5d834d987e147ac929048, type: 3}
   playerSpawnOffset: {x: 0, y: 1, z: 0}
-  width: 20
-  depth: 20
+  width: 100
+  depth: 100
   tileSize: 6
   platformHeight: 0
-  straightChance: 75
+  straightChance: 20
   cornerChance: 20
-  smallChance: 5
-  regularChance: 50
-  targetPlatformCount: 120
-  maxBranchingDepth: 5
+  smallChance: 20
+  regularChance: 20
+  targetPlatformCount: 200
+  maxBranchingDepth: 1
   branchChance: 0.1
   minJumpGap: 2
   maxJumpGap: 2
   minJumpChainLength: 1
   maxJumpChainLength: 1
   jumpChallengeChance: 0.02
-  minPathLength: 8
-  maxPathLength: 10
+  minPathLength: 1
+  maxPathLength: 3
   cornerConnectionChance: 0.95
 --- !u!4 &1875233086
 Transform:

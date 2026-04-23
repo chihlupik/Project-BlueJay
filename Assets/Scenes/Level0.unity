@@ -240,7 +240,7 @@ MonoBehaviour:
   m_LightCookieSize: {x: 1, y: 1}
   m_LightCookieOffset: {x: 0, y: 0}
   m_SoftShadowQuality: 0
---- !u!1 &1875233084
+--- !u!1 &1922275549
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -248,8 +248,8 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 1875233086}
-  - component: {fileID: 1875233085}
+  - component: {fileID: 1922275551}
+  - component: {fileID: 1922275550}
   m_Layer: 0
   m_Name: LevelGenerator
   m_TagString: Untagged
@@ -257,51 +257,25 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1875233085
+--- !u!114 &1922275550
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1875233084}
+  m_GameObject: {fileID: 1922275549}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e965ba3b3f7325174b150f551c1a0141, type: 3}
+  m_Script: {fileID: 11500000, guid: 03e5c01d7ec76504b81f3a05dd7920a5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  platformPrefabs: []
-  spawnPlatform: {fileID: 8993603519178152974, guid: 9d4fee502ea212240ad2ee858b20bd63, type: 3}
-  cornerPlatform: {fileID: 4616699066471895789, guid: 3a7f798490b94986297b1a7a969163ac, type: 3}
-  straightPlatform: {fileID: 5928856966902214444, guid: baf542f3b9d1eb599a4d6c1d0a115625, type: 3}
-  smallPlatform: {fileID: 1300683110965239243, guid: 980efecc406f72e349515e989d4b3ec1, type: 3}
-  playerPrefab: {fileID: 8421076372328126467, guid: 27b7b27555d5d834d987e147ac929048, type: 3}
-  playerSpawnOffset: {x: 0, y: 1, z: 0}
-  width: 100
-  depth: 100
-  tileSize: 6
-  platformHeight: 0
-  straightChance: 20
-  cornerChance: 20
-  smallChance: 20
-  regularChance: 20
-  targetPlatformCount: 200
-  maxBranchingDepth: 1
-  branchChance: 0.1
-  minJumpGap: 2
-  maxJumpGap: 2
-  minJumpChainLength: 1
-  maxJumpChainLength: 1
-  jumpChallengeChance: 0.02
-  minPathLength: 1
-  maxPathLength: 3
-  cornerConnectionChance: 0.95
---- !u!4 &1875233086
+--- !u!4 &1922275551
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1875233084}
+  m_GameObject: {fileID: 1922275549}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -315,4 +289,4 @@ SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
   - {fileID: 84738351}
-  - {fileID: 1875233086}
+  - {fileID: 1922275551}

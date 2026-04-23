@@ -67,6 +67,7 @@ public class PlayerController : MonoBehaviour
     public float grappleBoostDuration = 1.5f;
     public float grappleBoostControlMultiplier = 0.8f;
     public bool canCancelGrappleBoostWithJump = true;
+    public bool endGrappleBoostOnGround = true; // New setting
     
     public float standingCameraHeight = 1.6f;
     public float crouchingCameraHeight = 0.8f;
@@ -79,8 +80,11 @@ public class PlayerController : MonoBehaviour
     [Header("Movement Control During Actions")]
     public float slideControlMultiplier = 0.4f;
     
-    [Header("Footstep Sounds")]
+    [Header("Audio Sources")]
     public AudioSource footstepAudioSource;
+    public AudioSource sfxAudioSource;
+    
+    [Header("Footstep Sounds")]
     public AudioClip walkFootstepSound;
     public AudioClip slideSound;
     public AudioClip jumpSound;
@@ -154,13 +158,11 @@ public class PlayerController : MonoBehaviour
     private bool isDiveEnding = false;
     private float diveHeightOnStart;
     
-    // Счетчики для воздуха
     private int airJumpsRemaining = 0;
     private bool hasDoubleJumped = false;
     private float doubleJumpCooldownTimer = 0f;
-    private bool hasUsedDive = false; // Флаг: использовал ли дайв в текущем полете
+    private bool hasUsedDive = false;
     
-    // Grappling hook variables
     private bool isGrappling = false;
     private float grappleCooldownTimer = 0f;
     private Vector3 grappleTargetPoint;
@@ -177,6 +179,11 @@ public class PlayerController : MonoBehaviour
     private float stepTimer = 0f;
     private bool wasGrounded = false;
     private bool hasLanded = false;
+    
+    // Audio management variables
+    private bool isPlayingSlideSound = false;
+    private bool isPlayingDiveSound = false;
+    private bool hasPlayedGrappleSound = false;
 
     public Transform cameraTransform;
     public Transform groundCheck;
@@ -207,6 +214,19 @@ public class PlayerController : MonoBehaviour
         airJumpsRemaining = maxAirJumps;
         diveHeightOnStart = diveHeight;
         hasUsedDive = false;
+        
+        // Initialize audio flags
+        isPlayingSlideSound = false;
+        isPlayingDiveSound = false;
+        hasPlayedGrappleSound = false;
+        
+        // Create sfxAudioSource if not assigned
+        if (sfxAudioSource == null && footstepAudioSource != null)
+        {
+            sfxAudioSource = gameObject.AddComponent<AudioSource>();
+            sfxAudioSource.playOnAwake = false;
+            sfxAudioSource.spatialBlend = footstepAudioSource.spatialBlend;
+        }
     }
 
     void Update()
@@ -219,6 +239,18 @@ public class PlayerController : MonoBehaviour
         if (diveCooldownTimer > 0f) diveCooldownTimer -= Time.deltaTime;
         if (grappleCooldownTimer > 0f) grappleCooldownTimer -= Time.deltaTime;
         if (grappleJumpResetTimer > 0f) grappleJumpResetTimer -= Time.deltaTime;
+
+        // Reset grapple sound flag when cooldown ends
+        if (grappleCooldownTimer <= 0f)
+        {
+            hasPlayedGrappleSound = false;
+        }
+
+        // Check for grapple boost end on ground
+        if (endGrappleBoostOnGround && isGrappleBoosting && controller.isGrounded)
+        {
+            EndGrappleBoostOnGround();
+        }
 
         HandleCrouchInput();
         HandleSliding();
@@ -236,12 +268,11 @@ public class PlayerController : MonoBehaviour
             AutoStandUp();
         }
         
-        // Сброс флага дайва при касании земли
         if (controller.isGrounded)
         {
             airJumpsRemaining = maxAirJumps;
             hasDoubleJumped = false;
-            hasUsedDive = false; // Сбрасываем флаг дайва
+            hasUsedDive = false;
         }
     }
     
@@ -337,7 +368,7 @@ public class PlayerController : MonoBehaviour
         
         airJumpsRemaining = maxAirJumps;
         hasDoubleJumped = false;
-        hasUsedDive = false; // Сбрасываем флаг дайва
+        hasUsedDive = false;
         grappleJumpResetTimer = 0.5f;
     }
     
@@ -374,6 +405,21 @@ public class PlayerController : MonoBehaviour
         }
     }
     
+    void EndGrappleBoostOnGround()
+    {
+        isGrappleBoosting = false;
+        grappleBoostTimer = 0f;
+        
+        // Optional: Add a small speed boost or slide when landing
+        if (currentVelocity.magnitude > speed)
+        {
+            // Preserve some momentum when landing
+            currentVelocity = currentVelocity.normalized * Mathf.Min(currentVelocity.magnitude, speed * 1.5f);
+            moveDirection.x = currentVelocity.x;
+            moveDirection.z = currentVelocity.z;
+        }
+    }
+    
     void CancelGrappleBoost()
     {
         isGrappleBoosting = false;
@@ -386,7 +432,7 @@ public class PlayerController : MonoBehaviour
         airJumpsRemaining = maxAirJumps;
         hasDoubleJumped = false;
         doubleJumpCooldownTimer = 0f;
-        hasUsedDive = false; // Сбрасываем флаг дайва
+        hasUsedDive = false;
         
         if (!controller.isGrounded)
         {
@@ -490,14 +536,13 @@ public class PlayerController : MonoBehaviour
         Vector3 horizontalVelocity = new Vector3(currentVelocity.x, 0, currentVelocity.z);
         bool isMovingHorizontally = horizontalVelocity.magnitude > minDiveSpeedThreshold;
         
-        // Проверка: можно ли сделать дайв (только один раз за полет)
         bool canDive = !controller.isGrounded && 
                        diveCooldownTimer <= 0f && 
                        blockDiveTimer <= 0f && 
                        isMovingHorizontally && 
                        !isGrappling && 
                        !isGrappleBoosting &&
-                       !hasUsedDive; // Ключевое условие - дайв не использован в текущем полете
+                       !hasUsedDive;
         
         if (Input.GetKeyDown(KeyCode.Q) && canDive)
         {
@@ -673,7 +718,6 @@ public class PlayerController : MonoBehaviour
         diveCooldownTimer = diveCooldown;
         diveDirection = transform.forward;
         
-        // Отмечаем, что дайв использован
         hasUsedDive = true;
         
         if (diveForwardBoost > 1f) diveDirection *= diveForwardBoost;
@@ -961,14 +1005,19 @@ public class PlayerController : MonoBehaviour
         Vector2 input = new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"));
         bool hasMovementInput = input.magnitude > 0.1f;
         bool isMoving = currentVelocity.magnitude > 0.1f;
+        
+        // ONLY footsteps require being grounded
         bool shouldPlayFootsteps = isGrounded && hasMovementInput && isMoving && !isSliding && !isDiving && !isGrappling && !isGrappleBoosting;
 
+        // Landing sound - plays when you hit the ground
         if (isGrounded && !wasGrounded)
         {
             float landingVelocity = Mathf.Abs(moveDirection.y);
-            if (landingVelocity > landingThreshold) PlayLandingSound(landingVelocity);
+            if (landingVelocity > landingThreshold) 
+                PlayLandingSound(landingVelocity);
         }
 
+        // Footsteps - only when grounded
         if (shouldPlayFootsteps)
         {
             float stepInterval = GetStepInterval();
@@ -979,26 +1028,69 @@ public class PlayerController : MonoBehaviour
                 stepTimer = 0f;
             }
         }
-        else stepTimer = 0f;
+        else 
+        {
+            stepTimer = 0f;
+            
+            // Stop footstep sounds when in air
+            if (!isGrounded && footstepAudioSource.isPlaying && 
+                footstepAudioSource.clip == walkFootstepSound)
+            {
+                footstepAudioSource.Stop();
+            }
+        }
 
+        // Slide sound
         if (isSliding)
         {
-            if (!footstepAudioSource.isPlaying || footstepAudioSource.clip != slideSound) PlaySlideSound();
+            if (!isPlayingSlideSound)
+            {
+                PlaySlideSound();
+                isPlayingSlideSound = true;
+            }
+            else if (!footstepAudioSource.isPlaying && isPlayingSlideSound)
+            {
+                PlaySlideSound();
+            }
         }
-        else if (isDiving)
+        else
         {
-            if (!footstepAudioSource.isPlaying || footstepAudioSource.clip != diveSound) PlayDiveSound();
+            if (isPlayingSlideSound)
+            {
+                if (footstepAudioSource.isPlaying && footstepAudioSource.clip == slideSound)
+                    footstepAudioSource.Stop();
+                isPlayingSlideSound = false;
+            }
         }
-        else if (footstepAudioSource.clip == slideSound && footstepAudioSource.isPlaying) footstepAudioSource.Stop();
+
+        // Dive sound flag management
+        if (isDiving)
+        {
+            if (!isPlayingDiveSound)
+            {
+                isPlayingDiveSound = true;
+            }
+        }
+        else
+        {
+            if (isPlayingDiveSound)
+            {
+                isPlayingDiveSound = false;
+            }
+        }
 
         wasGrounded = isGrounded;
     }
 
-    float GetStepInterval() => isCrouching ? crouchStepInterval : walkStepInterval;
+    float GetStepInterval()
+    {
+        return isCrouching ? crouchStepInterval : walkStepInterval;
+    }
 
     void PlayFootstepSound()
     {
         if (footstepAudioSource == null || walkFootstepSound == null) return;
+        
         footstepAudioSource.clip = walkFootstepSound;
         float basePitch = isCrouching ? crouchPitch : walkPitch;
         float baseVolume = isCrouching ? crouchVolume : walkVolume;
@@ -1011,6 +1103,10 @@ public class PlayerController : MonoBehaviour
     void PlaySlideSound()
     {
         if (footstepAudioSource == null || slideSound == null) return;
+        
+        if (footstepAudioSource.isPlaying && footstepAudioSource.clip == slideSound)
+            return;
+            
         footstepAudioSource.clip = slideSound;
         footstepAudioSource.pitch = slidePitch;
         footstepAudioSource.volume = slideVolume;
@@ -1020,39 +1116,43 @@ public class PlayerController : MonoBehaviour
 
     void PlayDiveSound()
     {
-        if (footstepAudioSource == null || diveSound == null) return;
-        footstepAudioSource.clip = diveSound;
-        footstepAudioSource.pitch = divePitch;
-        footstepAudioSource.volume = diveVolume;
-        footstepAudioSource.loop = false;
-        footstepAudioSource.Play();
+        if (sfxAudioSource == null || diveSound == null) return;
+        
+        sfxAudioSource.pitch = divePitch;
+        sfxAudioSource.volume = diveVolume;
+        sfxAudioSource.PlayOneShot(diveSound, diveVolume);
     }
 
     void PlayJumpSound()
     {
-        if (footstepAudioSource == null || jumpSound == null) return;
-        footstepAudioSource.clip = jumpSound;
-        footstepAudioSource.pitch = jumpPitch;
-        footstepAudioSource.volume = jumpVolume;
-        footstepAudioSource.loop = false;
-        footstepAudioSource.Play();
+        if (sfxAudioSource == null || jumpSound == null) return;
+        
+        sfxAudioSource.pitch = jumpPitch;
+        sfxAudioSource.volume = jumpVolume;
+        sfxAudioSource.PlayOneShot(jumpSound, jumpVolume);
     }
 
     void PlayLandingSound(float landingVelocity)
     {
-        if (footstepAudioSource == null || landingSound == null) return;
+        if (sfxAudioSource == null || landingSound == null) return;
+        
         float landingIntensity = Mathf.Clamp01(landingVelocity / maxLandingVelocity);
-        footstepAudioSource.clip = landingSound;
-        footstepAudioSource.pitch = Random.Range(landingPitchMin, landingPitchMax);
-        footstepAudioSource.volume = landingBaseVolume + (landingIntensity * landingSpeedVolume);
-        footstepAudioSource.loop = false;
-        footstepAudioSource.Play();
+        sfxAudioSource.pitch = Random.Range(landingPitchMin, landingPitchMax);
+        sfxAudioSource.volume = landingBaseVolume + (landingIntensity * landingSpeedVolume);
+        sfxAudioSource.PlayOneShot(landingSound, sfxAudioSource.volume);
     }
 
     void PlayGrappleSound()
     {
-        if (footstepAudioSource == null || grappleSound == null) return;
-        footstepAudioSource.PlayOneShot(grappleSound, grappleVolume);
+        if (sfxAudioSource == null || grappleSound == null) return;
+        
+        if (hasPlayedGrappleSound)
+            return;
+            
+        sfxAudioSource.pitch = grapplePitch;
+        sfxAudioSource.volume = grappleVolume;
+        sfxAudioSource.PlayOneShot(grappleSound, grappleVolume);
+        hasPlayedGrappleSound = true;
     }
 
     void OnTriggerEnter(Collider other)
@@ -1061,7 +1161,6 @@ public class PlayerController : MonoBehaviour
         if (grapplePoint != null && grapplePoint.IsAvailable())
         {
             grapplePoint.OnPlayerTouch(this);
-            // Сбрасываем флаг дайва при касании точки
             hasUsedDive = false;
         }
     }

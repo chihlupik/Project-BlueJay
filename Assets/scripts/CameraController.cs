@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 public class CameraController : MonoBehaviour
 {
@@ -22,6 +23,16 @@ public class CameraController : MonoBehaviour
     public float crouchBobbingSpeed = 2f;
     public float bobbingTransitionSharpness = 8f;
 
+    [Header("Crosshair")]
+    public Image crosshairImage;
+    public float grappleRange = 20f;
+    public LayerMask grappleLayerMask = -1;
+    public Color defaultCrosshairColor = Color.white;
+    public Color grappleCrosshairColor = Color.green;
+    public float defaultCrosshairSize = 1f;
+    public float maxGrappleCrosshairSize = 1.5f; // Maximum size when very close
+    public float minGrappleCrosshairSize = 1.05f; // Minimum size at max range
+
     private float xRotation = 0f;
     private float currentTilt = 0f; 
     private float targetTilt = 0f; 
@@ -42,6 +53,10 @@ public class CameraController : MonoBehaviour
     private bool wasGrounded = false;
     private Vector3 currentBobOffset = Vector3.zero;
 
+    // Crosshair variables
+    private bool isAimingAtGrapple = false;
+    private float currentDistanceToGrapple = 0f;
+
     void Start()
     {
         Cursor.lockState = CursorLockMode.Locked;
@@ -55,6 +70,84 @@ public class CameraController : MonoBehaviour
 
         playerController = GetComponentInParent<PlayerController>();
         originalLocalPosition = transform.localPosition;
+
+        // Setup crosshair if not assigned
+        if (crosshairImage == null)
+        {
+            TryFindCrosshair();
+        }
+
+        // Set default crosshair state
+        if (crosshairImage != null)
+        {
+            crosshairImage.color = defaultCrosshairColor;
+            crosshairImage.rectTransform.localScale = Vector3.one * defaultCrosshairSize;
+        }
+    }
+
+    void TryFindCrosshair()
+    {
+        // Try to find crosshair in the scene
+        Canvas canvas = FindObjectOfType<Canvas>();
+        if (canvas != null)
+        {
+            crosshairImage = canvas.GetComponentInChildren<Image>();
+            if (crosshairImage != null && crosshairImage.name.ToLower().Contains("crosshair"))
+            {
+                return;
+            }
+        }
+
+        // If still not found, create a simple crosshair
+        CreateDefaultCrosshair();
+    }
+
+    void CreateDefaultCrosshair()
+    {
+        Canvas canvas = FindObjectOfType<Canvas>();
+        if (canvas == null)
+        {
+            GameObject canvasObj = new GameObject("CrosshairCanvas");
+            canvas = canvasObj.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvasObj.AddComponent<CanvasScaler>();
+            canvasObj.AddComponent<GraphicRaycaster>();
+        }
+
+        GameObject crosshairObj = new GameObject("Crosshair");
+        crosshairObj.transform.SetParent(canvas.transform, false);
+        
+        crosshairImage = crosshairObj.AddComponent<Image>();
+        
+        // Create a simple crosshair texture if none exists
+        Texture2D texture = new Texture2D(32, 32);
+        Color32[] colors = new Color32[32 * 32];
+        
+        for (int i = 0; i < colors.Length; i++)
+        {
+            int x = i % 32;
+            int y = i / 32;
+            
+            if (x >= 14 && x <= 17 && (y <= 5 || y >= 26)) // Vertical line
+                colors[i] = Color.white;
+            else if (y >= 14 && y <= 17 && (x <= 5 || x >= 26)) // Horizontal line
+                colors[i] = Color.white;
+            else
+                colors[i] = Color.clear;
+        }
+        
+        texture.SetPixels32(colors);
+        texture.filterMode = FilterMode.Point;
+        texture.Apply();
+        
+        crosshairImage.sprite = Sprite.Create(texture, new Rect(0, 0, 32, 32), new Vector2(0.5f, 0.5f));
+        crosshairImage.rectTransform.sizeDelta = new Vector2(32, 32);
+        
+        // Center the crosshair
+        RectTransform rect = crosshairImage.rectTransform;
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = Vector2.zero;
     }
 
     void Update()
@@ -63,6 +156,7 @@ public class CameraController : MonoBehaviour
         HandleMovementFOV();
         HandleMouseLook();
         HandleViewBobbing();
+        HandleCrosshair();
         
         ApplyFOV();
     }
@@ -220,6 +314,57 @@ public class CameraController : MonoBehaviour
         transform.localPosition = originalLocalPosition + currentBobOffset;
     }
 
+    void HandleCrosshair()
+    {
+        if (crosshairImage == null) return;
+
+        // Check if aiming at grapple point and get distance
+        GrappleHitInfo grappleInfo = GetGrapplePointInfo();
+        isAimingAtGrapple = grappleInfo.hitValid;
+
+        if (isAimingAtGrapple)
+        {
+            // Calculate crosshair size based on distance
+            // Closer = bigger, farther = smaller
+            float t = 1f - (grappleInfo.distance / grappleRange);
+            t = Mathf.Clamp01(t);
+            
+            float targetSize = Mathf.Lerp(minGrappleCrosshairSize, maxGrappleCrosshairSize, t);
+            crosshairImage.rectTransform.localScale = Vector3.one * targetSize;
+            crosshairImage.color = grappleCrosshairColor;
+        }
+        else
+        {
+            // Reset crosshair
+            crosshairImage.rectTransform.localScale = Vector3.one * defaultCrosshairSize;
+            crosshairImage.color = defaultCrosshairColor;
+        }
+    }
+
+    GrappleHitInfo GetGrapplePointInfo()
+    {
+        if (playerCamera == null) return new GrappleHitInfo();
+
+        Ray ray = new Ray(playerCamera.transform.position, playerCamera.transform.forward);
+        RaycastHit hit;
+
+        if (Physics.Raycast(ray, out hit, grappleRange, grappleLayerMask))
+        {
+            GrapplePoint grapplePoint = hit.collider.GetComponent<GrapplePoint>();
+            if (grapplePoint != null && grapplePoint.IsAvailable())
+            {
+                return new GrappleHitInfo
+                {
+                    hitValid = true,
+                    distance = hit.distance,
+                    point = grapplePoint
+                };
+            }
+        }
+
+        return new GrappleHitInfo();
+    }
+
     public void UpdateOriginalPosition()
     {
         originalLocalPosition = transform.localPosition;
@@ -233,5 +378,18 @@ public class CameraController : MonoBehaviour
     public void SetViewBobbing(bool enabled)
     {
         enableViewBobbing = enabled;
+    }
+
+    public bool IsAimingAtGrapple()
+    {
+        return isAimingAtGrapple;
+    }
+
+    // Helper struct to return grapple info
+    private struct GrappleHitInfo
+    {
+        public bool hitValid;
+        public float distance;
+        public GrapplePoint point;
     }
 }

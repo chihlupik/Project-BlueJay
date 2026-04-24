@@ -67,7 +67,7 @@ public class PlayerController : MonoBehaviour
     public float grappleBoostDuration = 1.5f;
     public float grappleBoostControlMultiplier = 0.8f;
     public bool canCancelGrappleBoostWithJump = true;
-    public bool endGrappleBoostOnGround = true; // New setting
+    public bool endGrappleBoostOnGround = true;
     
     public float standingCameraHeight = 1.6f;
     public float crouchingCameraHeight = 0.8f;
@@ -184,6 +184,9 @@ public class PlayerController : MonoBehaviour
     private bool isPlayingSlideSound = false;
     private bool isPlayingDiveSound = false;
     private bool hasPlayedGrappleSound = false;
+    
+    // Jump pad fix variables
+    private bool ignoreGravityThisFrame = false;
 
     public Transform cameraTransform;
     public Transform groundCheck;
@@ -440,6 +443,58 @@ public class PlayerController : MonoBehaviour
             PlayJumpSound();
         }
     }
+    
+    // ============ JUMP PAD METHODS ============
+    
+    public void ApplyJumpPadBoost(float jumpHeight)
+    {
+        // Force the jump velocity
+        moveDirection.y = jumpHeight;
+        currentVelocity.y = jumpHeight;
+        
+        // Reset jump cooldown
+        jumpCooldownTimer = 0f;
+        
+        // Reset abilities
+        airJumpsRemaining = maxAirJumps;
+        hasDoubleJumped = false;
+        hasUsedDive = false;
+        
+        // Cancel all movement states
+        isSliding = false;
+        isSlideFromDive = false;
+        isDiving = false;
+        isDiveEnding = false;
+        isGrappling = false;
+        isGrappleBoosting = false;
+        isCrouching = false;
+        
+        // Reset slide tilt
+        targetSlideTilt = 0f;
+        currentSlideTilt = 0f;
+        targetHeight = standingHeight;
+        
+        // Update height immediately
+        controller.height = standingHeight;
+        controller.center = new Vector3(0, standingHeight / 2f, 0);
+        
+        // Prevent gravity from applying this frame
+        ignoreGravityThisFrame = true;
+        StartCoroutine(ResetGravityFlag());
+        
+        // Play sound
+        PlayJumpSound();
+        
+        Debug.Log($"Jump Pad applied! Jump height: {jumpHeight}, Current Y velocity: {moveDirection.y}");
+    }
+    
+    IEnumerator ResetGravityFlag()
+    {
+        yield return null;
+        ignoreGravityThisFrame = false;
+    }
+    
+    // ============ END JUMP PAD METHODS ============
 
     void HandleCrouchInput()
     {
@@ -963,7 +1018,12 @@ public class PlayerController : MonoBehaviour
             moveDirection.z = currentVelocity.z;
         }
 
-        moveDirection.y -= gravity * Time.deltaTime;
+        // Apply gravity with jump pad fix
+        if (!ignoreGravityThisFrame)
+        {
+            moveDirection.y -= gravity * Time.deltaTime;
+        }
+        
         controller.Move(moveDirection * Time.deltaTime);
     }
 
@@ -1162,6 +1222,13 @@ public class PlayerController : MonoBehaviour
         {
             grapplePoint.OnPlayerTouch(this);
             hasUsedDive = false;
+        }
+        
+        // Also handle JumpPad trigger
+        JumpPad jumpPad = other.GetComponent<JumpPad>();
+        if (jumpPad != null && jumpPad.IsAvailable())
+        {
+            jumpPad.OnPlayerTouch(this);
         }
     }
 
